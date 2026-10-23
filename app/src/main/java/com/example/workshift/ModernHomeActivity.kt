@@ -20,6 +20,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.net.Uri
+import android.media.RingtoneManager
+import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.View
@@ -175,7 +177,10 @@ class ModernHomeActivity : Activity() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(surface) }
         setContentView(root)
         render()
-        window.decorView.post { offerNotificationSetupOnce() }
+        window.decorView.post {
+            offerNotificationSetupOnce()
+            offerFirstScheduleGuide()
+        }
     }
 
     override fun onResume() {
@@ -183,6 +188,20 @@ class ModernHomeActivity : Activity() {
         visibleActivity = WeakReference(this)
         AlarmScheduler.reschedule(this)
         if (::root.isInitialized) render()
+    }
+
+    @Deprecated("Deprecated Android activity result API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 82 && resultCode == RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val uri = data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if (uri != null) {
+                AlarmPreferences.setRingtone(this, uri)
+                toast("Мелодия сохранена")
+                render()
+            } else toast("Мелодия не изменена")
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -713,6 +732,18 @@ class ModernHomeActivity : Activity() {
         render()
     }
 
+    private fun offerFirstScheduleGuide() {
+        val prefs = getSharedPreferences("welcome_v1", Context.MODE_PRIVATE)
+        if (store.schedules.isNotEmpty() || prefs.getBoolean("seen", false)) return
+        prefs.edit().putBoolean("seen", true).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Настроим ваш первый график")
+            .setMessage("Сначала можно создать типы дней с цветом, иконкой, рабочими часами и будильником. Затем составить из них последовательность смен.")
+            .setPositiveButton("Настроить типы дней") { _, _ -> showTypes() }
+            .setNegativeButton("Сразу добавить график") { _, _ -> editSchedule(null) }
+            .show()
+    }
+
     private fun offerNotificationSetupOnce() {
         if (Build.VERSION.SDK_INT < 33 || notificationsAllowed()) return
         val prefs = getSharedPreferences("permissions_intro_v1", Context.MODE_PRIVATE)
@@ -811,6 +842,43 @@ class ModernHomeActivity : Activity() {
         }
     }
 
+    private fun chooseAlarmSound() {
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Мелодия рабочего будильника")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, AlarmPreferences.ringtone(this@ModernHomeActivity))
+        }
+        runCatching {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, 82)
+        }.onFailure { toast("Выбор мелодии недоступен в этой версии Android") }
+    }
+
+    private fun soundCard(): LinearLayout = card().apply {
+        addView(text("Звук будильника", 18f, ink, true))
+        space(this, 7)
+        addView(text("Мелодия: " + AlarmPreferences.ringtoneName(this@ModernHomeActivity), 13f, muted))
+        space(this, 10)
+        addView(action("Выбрать звук", false) { chooseAlarmSound() })
+        val vibrate = CheckBox(this@ModernHomeActivity).apply {
+            text = "Вибрация при звонке"
+            isChecked = AlarmPreferences.vibrate(this@ModernHomeActivity)
+            setTextColor(ink)
+            setOnCheckedChangeListener { _, yes ->
+                AlarmPreferences.setVibrate(this@ModernHomeActivity, yes)
+            }
+        }
+        addView(vibrate)
+        addView(text("Громкость меняется в системной настройке громкости будильников.", 12f, muted))
+        space(this, 6)
+        addView(action("Громкость в настройках Android", false) {
+            runCatching { startActivity(Intent(Settings.ACTION_SOUND_SETTINGS)) }
+                .onFailure { toast("Не удалось открыть настройки звука") }
+        })
+    }
+
     private fun renderAlarms() {
         wide(body, text("Будильники", 24f, ink, true), 7)
         wide(body, text("Время сигнала можно задать для графика или любого дня отдельно. Настройка не обязательна.", 13f, muted), 16)
@@ -818,6 +886,7 @@ class ModernHomeActivity : Activity() {
         if (AlarmSoundService.ringing) {
             wide(body, action("■  Остановить звонящий будильник") { stopActiveAlarm() }, 14)
         }
+        wide(body, soundCard(), 14)
         val controls = card()
         controls.addView(text("Проверка и управление", 18f, ink, true))
         space(controls, 12)
@@ -923,6 +992,7 @@ class ModernHomeActivity : Activity() {
         space(box, 12)
         box.addView(action("Редактировать типы и цвета", false) { showTypes() })
         wide(body, box, 15)
+        wide(body, soundCard(), 15)
         val second = card()
         second.addView(text("Как работает пауза", 17f, ink, true))
         space(second, 7)
@@ -930,7 +1000,7 @@ class ModernHomeActivity : Activity() {
         space(second, 16)
         second.addView(text("О приложении", 17f, ink, true))
         space(second, 7)
-        second.addView(text("Мой график 0.3 · данные сохраняются на устройстве, без регистрации и интернета.", 13f, muted))
+        second.addView(text("Мой график 0.5 · данные сохраняются на устройстве, без регистрации и интернета.", 13f, muted))
         wide(body, second)
     }
 
@@ -992,6 +1062,8 @@ class ModernHomeActivity : Activity() {
         ScrollView(this).apply { addView(panel) }
     private fun input(initial: String, hint: String = "") =
         EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
             setSingleLine(true)
             setText(initial)
             this.hint = hint
