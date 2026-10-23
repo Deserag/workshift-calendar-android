@@ -61,6 +61,12 @@ object AlarmScheduler {
     fun scheduleTest(context: Context): Boolean =
         at(context, TEST_ID, "Проверка будильника", System.currentTimeMillis() + 60_000)
 
+    fun cancelTest(context: Context) {
+        val pending = pendingAlarm(context, TEST_ID, "Проверка будильника")
+        manager(context).cancel(pending)
+        pending.cancel()
+    }
+
     fun snooze(context: Context, requestId: Int, title: String, scheduleId: String?, shiftDate: String?): Boolean =
         at(context, if (requestId >= SNOOZE_OFFSET) requestId else requestId + SNOOZE_OFFSET,
             title, System.currentTimeMillis() + 5 * 60_000, scheduleId, shiftDate)
