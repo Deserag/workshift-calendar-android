@@ -8,7 +8,6 @@ import android.provider.AlarmClock
 import java.lang.ref.WeakReference
 import android.app.DatePickerDialog
 import android.app.NotificationManager
-import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -22,6 +21,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.net.Uri
 import android.view.Gravity
+import android.view.ViewGroup
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -29,6 +29,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.ImageView
+import android.widget.NumberPicker
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -70,6 +71,21 @@ class ModernHomeActivity : Activity() {
         0xFFE1E8F2.toInt(), 0xFFF3DDF6.toInt(), 0xFFC6F2F4.toInt(),
         0xFFEEE6D8.toInt(), 0xFFC9DFB6.toInt(), 0xFFDBE4FF.toInt()
     )
+    private val iconOptions: List<Pair<String, Int>> = listOf(
+        "sun" to R.drawable.ic_type_sun,
+        "moon" to R.drawable.ic_type_moon,
+        "rest" to R.drawable.ic_type_rest,
+        "briefcase" to R.drawable.ic_type_briefcase,
+        "book" to R.drawable.ic_type_book,
+        "plane" to R.drawable.ic_type_plane,
+        "star" to R.drawable.ic_type_star,
+        "leaf" to R.drawable.ic_type_leaf,
+        "home" to R.drawable.ic_type_home
+    )
+    private fun iconFor(type: DayType?): Int =
+        iconOptions.firstOrNull { it.first == type?.icon }?.second
+            ?: if (type?.rest == true) R.drawable.ic_type_rest else R.drawable.ic_type_sun
+
     private var tab = 0
     private var shownMonth: YearMonth = YearMonth.now()
     private var selectedDate: LocalDate = LocalDate.now()
@@ -869,18 +885,54 @@ class ModernHomeActivity : Activity() {
             setTextColor(ink)
             backgroundTintList = ColorStateList.valueOf(primary)
         }
+    /** Wheel controls replace the hard-to-use analog time dial. */
     private fun selectTime(title: String, initial: String, after: (String) -> Unit): TextView {
         val button = action(title + ": " + initial, false) { }
         button.setOnClickListener {
-            val time = LocalTime.parse(initialFromButton(button))
-            TimePickerDialog(this, { _, hours, minutes ->
-                val result = String.format(Locale.ROOT, "%02d:%02d", hours, minutes)
-                button.text = title + ": " + result; after(result)
-            }, time.hour, time.minute, true).show()
+            val current = LocalTime.parse(button.text.toString().substringAfterLast(": ").trim())
+            val content = stack().apply { setPadding(d(16), d(14), d(16), d(10)) }
+            content.addView(text("Прокрутите часы и минуты", 14f, muted, true))
+            space(content, 10)
+            val row = hrow().apply { gravity = Gravity.CENTER }
+            fun picker(low: Int, high: Int, value: Int): NumberPicker = NumberPicker(this).apply {
+                minValue = low
+                maxValue = high
+                this.value = value
+                wrapSelectorWheel = true
+                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                setFormatter { i -> String.format(Locale.ROOT, "%02d", i) }
+            }
+            val hours = picker(0, 23, current.hour)
+            val minutes = picker(0, 59, current.minute)
+            row.addView(hours, LinearLayout.LayoutParams(d(102), d(195)))
+            row.addView(text(":", 27f, ink, true).apply { gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(d(35), d(120)))
+            row.addView(minutes, LinearLayout.LayoutParams(d(102), d(195)))
+            content.addView(row)
+            space(content, 6)
+            val presets = hrow()
+            listOf(0, 15, 30, 45).forEach { m ->
+                val chip = action(String.format(Locale.ROOT, ":%02d", m), false) {
+                    minutes.value = m
+                }
+                presets.addView(chip, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = d(4)
+                })
+            }
+            content.addView(presets)
+            val dlg = AlertDialog.Builder(this).setTitle(title)
+                .setView(content)
+                .setPositiveButton("Выбрать") { _, _ ->
+                    val result = String.format(Locale.ROOT, "%02d:%02d", hours.value, minutes.value)
+                    button.text = title + ": " + result
+                    after(result)
+                }
+                .setNegativeButton("Отмена", null).create()
+            showEditor(dlg)
         }
         return button
     }
-    private fun initialFromButton(view: TextView) = view.text.toString().substringAfterLast(": ").trim()
+
     private fun chooseDate(from: LocalDate, onDate: (LocalDate) -> Unit) {
         DatePickerDialog(this, { _, y, m, d -> onDate(LocalDate.of(y, m + 1, d)) },
             from.year, from.monthValue - 1, from.dayOfMonth).show()
