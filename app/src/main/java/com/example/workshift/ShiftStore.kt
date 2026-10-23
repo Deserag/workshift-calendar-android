@@ -12,15 +12,32 @@ data class DayType(
     val id: String = UUID.randomUUID().toString(),
     var name: String,
     var color: Int,
-    var rest: Boolean = false
+    var rest: Boolean = false,
+    var icon: String = "sun",
+    var defaultStart: String? = null,
+    var defaultEnd: String? = null,
+    var alarmMode: String = "INHERIT",
+    var alarmTime: String? = null,
+    var alarmPreviousDay: Boolean = false
 ) {
     fun toJson() = JSONObject().apply {
         put("id", id); put("name", name); put("color", color); put("rest", rest)
+        put("icon", icon); put("defaultStart", defaultStart); put("defaultEnd", defaultEnd)
+        put("alarmMode", alarmMode); put("alarmTime", alarmTime)
+        put("alarmPreviousDay", alarmPreviousDay)
     }
     companion object {
         fun fromJson(o: JSONObject) = DayType(
-            o.getString("id"), o.optString("name", "День"),
-            o.optInt("color", 0xFFE1F6EB.toInt()), o.optBoolean("rest")
+            id = o.getString("id"),
+            name = o.optString("name", "День"),
+            color = o.optInt("color", 0xFFE1F6EB.toInt()),
+            rest = o.optBoolean("rest"),
+            icon = o.optString("icon", if (o.optBoolean("rest")) "rest" else "sun"),
+            defaultStart = o.optString("defaultStart").ifBlank { null },
+            defaultEnd = o.optString("defaultEnd").ifBlank { null },
+            alarmMode = o.optString("alarmMode", "INHERIT"),
+            alarmTime = o.optString("alarmTime").ifBlank { null },
+            alarmPreviousDay = o.optBoolean("alarmPreviousDay")
         )
     }
 }
@@ -32,19 +49,25 @@ data class ShiftDay(
     var end: String? = null,
     var alarmMode: String = "INHERIT",
     var alarmTime: String? = null,
-    var alarmPreviousDay: Boolean = false
+    var alarmPreviousDay: Boolean = false,
+    var workMode: String = "INHERIT"
 ) {
     fun toJson() = JSONObject().apply {
         put("typeId", typeId); put("start", start); put("end", end)
         put("alarmMode", alarmMode); put("alarmTime", alarmTime)
-        put("alarmPreviousDay", alarmPreviousDay)
+        put("alarmPreviousDay", alarmPreviousDay); put("workMode", workMode)
     }
     companion object {
-        fun fromJson(o: JSONObject) = ShiftDay(
-            o.getString("typeId"), if (o.isNull("start")) null else o.optString("start").ifBlank { null },
-            if (o.isNull("end")) null else o.optString("end").ifBlank { null }, o.optString("alarmMode", "INHERIT"),
-            if (o.isNull("alarmTime")) null else o.optString("alarmTime").ifBlank { null }, o.optBoolean("alarmPreviousDay")
-        )
+        fun fromJson(o: JSONObject): ShiftDay {
+            val start = if (o.isNull("start")) null else o.optString("start").ifBlank { null }
+            val end = if (o.isNull("end")) null else o.optString("end").ifBlank { null }
+            return ShiftDay(
+                o.getString("typeId"), start, end, o.optString("alarmMode", "INHERIT"),
+                if (o.isNull("alarmTime")) null else o.optString("alarmTime").ifBlank { null },
+                o.optBoolean("alarmPreviousDay"),
+                o.optString("workMode", if (start != null && end != null) "CUSTOM" else "INHERIT")
+            )
+        }
     }
 }
 
@@ -182,7 +205,13 @@ class ShiftStore(context: Context) {
         if (schedule.steps.isEmpty() || date.isBefore(start)) return null
         val index = (ChronoUnit.DAYS.between(start, date) % schedule.steps.size).toInt()
         val day = schedule.overrides[date.toString()] ?: schedule.steps[index]
-        return CalendarEntry(day, type(day.typeId) ?: return null, schedule.paused(date))
+        val kind = type(day.typeId) ?: return null
+        val resolved = when (day.workMode) {
+            "CUSTOM" -> day
+            "OFF" -> day.copy(start = null, end = null)
+            else -> day.copy(start = kind.defaultStart, end = kind.defaultEnd)
+        }
+        return CalendarEntry(resolved, kind, schedule.paused(date))
     }
 
     fun alarmForDate(date: LocalDate): AlarmEntry? {
@@ -193,9 +222,15 @@ class ShiftStore(context: Context) {
         return when (day.alarmMode) {
             "OFF" -> null
             "ON" -> day.alarmTime?.let { AlarmEntry(it, day.alarmPreviousDay, entry.type.name) }
-            else -> if (schedule.defaultAlarmEnabled) {
-                AlarmEntry(schedule.defaultAlarmTime, schedule.defaultAlarmPreviousDay, entry.type.name)
-            } else null
+            else -> when (entry.type.alarmMode) {
+                "OFF" -> null
+                "ON" -> entry.type.alarmTime?.let {
+                    AlarmEntry(it, entry.type.alarmPreviousDay, entry.type.name)
+                }
+                else -> if (schedule.defaultAlarmEnabled)
+                    AlarmEntry(schedule.defaultAlarmTime, schedule.defaultAlarmPreviousDay, entry.type.name)
+                else null
+            }
         }
     }
 
