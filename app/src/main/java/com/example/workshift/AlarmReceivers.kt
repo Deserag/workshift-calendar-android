@@ -29,6 +29,7 @@ class AlarmReceiver : BroadcastReceiver() {
         try {
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(start)
             else context.startService(start)
+            ModernHomeActivity.openRingingScreenIfVisible(context, intent)
         } catch (ex: Exception) {
             Log.e("WorkshiftAlarm", "Unable to ring alarm", ex)
         }
