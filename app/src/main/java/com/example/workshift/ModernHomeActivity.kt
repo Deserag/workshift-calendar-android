@@ -193,6 +193,41 @@ class ModernHomeActivity : Activity() {
     @Deprecated("Deprecated Android activity result API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 83 && resultCode == RESULT_OK) {
+            val uri = data?.data
+            if (uri != null) {
+                runCatching {
+                    contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                        it.write(store.exportJson())
+                    } ?: error("Cannot open destination")
+                }.onSuccess { toast("Графики сохранены в файл") }
+                    .onFailure { toast("Ошибка сохранения: " + it.message) }
+            }
+        }
+        if (requestCode == 84 && resultCode == RESULT_OK) {
+            val uri = data?.data
+            if (uri != null) {
+                AlertDialog.Builder(this)
+                    .setTitle("Восстановить данные из файла?")
+                    .setMessage("Это заменит все графики, типы дней и изменения дат на устройстве. Сначала сохраните текущую копию.")
+                    .setPositiveButton("Восстановить") { _, _ ->
+                        runCatching {
+                            val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use {
+                                it.readText()
+                            } ?: error("Cannot read file")
+                            store.importJson(raw)
+                            AlarmScheduler.reschedule(this, cancelSnoozes = true)
+                            calendarExpanded = false
+                            selectedDate = LocalDate.now()
+                            shownMonth = YearMonth.now()
+                            tab = 0
+                            render()
+                        }.onSuccess { toast("Графики восстановлены") }
+                            .onFailure { toast("Ошибка файла: " + it.message) }
+                    }
+                    .setNegativeButton("Отмена", null).show()
+            }
+        }
         if (requestCode == 82 && resultCode == RESULT_OK) {
             @Suppress("DEPRECATION")
             val uri = data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
@@ -1034,6 +1069,25 @@ class ModernHomeActivity : Activity() {
         if (s != null) wide(body, action("Настроить будильник графика", false) { editSchedule(s) })
     }
 
+    private fun backupData() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "moi-grafik-backup.json")
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, 83)
+    }
+
+    private fun restoreData() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, 84)
+    }
+
     private fun renderSettings() {
         wide(body, text("Настройки", 24f, ink, true), 15)
         val box = card()
@@ -1057,6 +1111,15 @@ class ModernHomeActivity : Activity() {
         box.addView(action("Редактировать типы и цвета", false) { showTypes() })
         wide(body, box, 15)
         wide(body, soundCard(), 15)
+        val backup = card()
+        backup.addView(text("Сохранение и перенос данных", 18f, ink, true))
+        space(backup, 7)
+        backup.addView(text("Перед переустановкой или переходом на подписанную версию сохраните файл с графиками. Удаление приложения уничтожает локальные данные.", 13f, muted))
+        space(backup, 10)
+        backup.addView(action("Экспортировать графики в JSON", false) { backupData() })
+        space(backup, 8)
+        backup.addView(action("Восстановить графики из JSON", false) { restoreData() })
+        wide(body, backup, 15)
         val second = card()
         second.addView(text("Как работает пауза", 17f, ink, true))
         space(second, 7)
