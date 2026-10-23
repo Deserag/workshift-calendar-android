@@ -81,12 +81,19 @@ class AlarmRingActivity : Activity() {
     }
 
     private fun act(action: String) {
+        // Stop the ringing service immediately, even if the broadcast is delayed.
+        stopService(Intent(this, AlarmSoundService::class.java))
         sendBroadcast(Intent(this, AlarmActionReceiver::class.java).apply {
             this.action = action
             putExtra("requestId", requestId)
             putExtra("title", title)
             putExtra("scheduleId", scheduleId)
             putExtra("shiftDate", shiftDate)
+        })
+        // Clear any old modal/menu stack: the user must see the home calendar.
+        startActivity(Intent(this, ModernHomeActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("openHomeAfterAlarm", true)
         })
         finish()
     }
