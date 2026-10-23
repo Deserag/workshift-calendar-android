@@ -4,6 +4,8 @@ package com.example.workshift
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.provider.AlarmClock
+import java.lang.ref.WeakReference
 import android.app.DatePickerDialog
 import android.app.NotificationManager
 import android.app.TimePickerDialog
@@ -44,6 +46,17 @@ import java.util.Locale
  * no migration, reset or changes to alarm semantics are required.
  */
 class ModernHomeActivity : Activity() {
+    companion object {
+        private var visibleActivity: WeakReference<ModernHomeActivity>? = null
+
+        fun openRingingScreenIfVisible(context: Context, source: Intent) {
+            val activity = visibleActivity?.get() ?: return
+            activity.startActivity(Intent(context, AlarmRingActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtras(source)
+            })
+        }
+    }
     private val store by lazy { ShiftStore(this) }
     private val ink = Color.rgb(20, 30, 57)
     private val muted = Color.rgb(105, 117, 149)
@@ -148,8 +161,14 @@ class ModernHomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        visibleActivity = WeakReference(this)
         AlarmScheduler.reschedule(this)
         if (::root.isInitialized) render()
+    }
+
+    override fun onPause() {
+        if (visibleActivity?.get() === this) visibleActivity = null
+        super.onPause()
     }
 
     private fun render() {
@@ -199,6 +218,9 @@ class ModernHomeActivity : Activity() {
 
     private fun renderHome() {
         mainCta()
+        if (AlarmSoundService.ringing) {
+            wide(body, action("■  Остановить звонящий будильник") { stopActiveAlarm() }, 15)
+        }
         val s = store.active()
         if (choosingStartFor != null) {
             val prompt = card()
@@ -231,8 +253,8 @@ class ModernHomeActivity : Activity() {
             return
         }
         val top = hrow()
-        val icon = text("▣", 23f, primary, true).apply {
-            gravity = Gravity.CENTER
+        val icon = navIcon(R.drawable.ic_nav_calendar, primary).apply {
+            setPadding(d(13), d(13), d(13), d(13))
             background = shape(0xFFECF1FF.toInt(), 17)
         }
         top.addView(icon, LinearLayout.LayoutParams(d(54), d(54)))
@@ -287,9 +309,9 @@ class ModernHomeActivity : Activity() {
             else day++
         }
         return listOf(
-            Triple("☀  " + day, "Рабочих", 0xFFFFF6E2.toInt()),
-            Triple("☾  " + night, "Ночных", 0xFFF0EAFF.toInt()),
-            Triple("◌  " + off, "Выходных", 0xFFFFECF0.toInt())
+            Triple(day.toString(), "Рабочих", 0xFFFFF6E2.toInt()),
+            Triple(night.toString(), "Ночных", 0xFFF0EAFF.toInt()),
+            Triple(off.toString(), "Выходных", 0xFFFFECF0.toInt())
         )
     }
 
@@ -315,7 +337,7 @@ class ModernHomeActivity : Activity() {
             grid.addView(text(it, 12f, muted, true).apply { gravity = Gravity.CENTER }, params(27))
         }
         repeat(shownMonth.atDay(1).dayOfWeek.value - 1) {
-            grid.addView(View(this), params(56))
+            grid.addView(View(this), params(51))
         }
         for (number in 1..shownMonth.lengthOfMonth()) {
             val date = shownMonth.atDay(number)
@@ -324,10 +346,8 @@ class ModernHomeActivity : Activity() {
             val color = if (selected) primary else entry?.type?.color ?: 0xFFF7F8FC.toInt()
             val marker = when {
                 entry == null -> ""
-                entry.paused -> "⏸"
-                entry.type.rest -> "—"
-                entry.type.name.contains("ноч", true) -> "☾"
-                else -> "✦"
+                entry.paused -> "Ⅱ"
+                else -> entry.type.name.take(3)
             }
             val alarmMark = if (store.alarmForDate(date) != null) " ·" else ""
             val cell = text(number.toString() + "\n" + marker + alarmMark,
@@ -338,7 +358,7 @@ class ModernHomeActivity : Activity() {
                 contentDescription = date.toString() + " " + (entry?.type?.name ?: "без смены")
             }
             tap(cell) { selectDate(date) }
-            grid.addView(cell, params(56))
+            grid.addView(cell, params(51))
         }
         box.addView(grid)
         space(box, 12)
@@ -435,19 +455,28 @@ class ModernHomeActivity : Activity() {
             val box = card()
             val row = hrow()
             val labels = stack()
-            labels.addView(text(s.name, 18f, ink, true))
-            labels.addView(text("Цикл " + s.steps.size + " дн. · " + (s.anchor?.toString() ?: "дата не выбрана"), 12f, muted))
+            labels.addView(text(s.name, 19f, ink, true))
+            space(labels, 5)
+            labels.addView(text("Повторяется каждые " + s.steps.size + " дн.", 13f, muted))
             row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(chip(if (selected) "Выбран" else "Другой", if (selected) good else muted,
                 if (selected) 0xFFE2F9EB.toInt() else 0xFFF2F4F8.toInt()))
             box.addView(row)
             space(box, 12)
-            box.addView(text(when {
-                !s.enabled -> "○ Выключен"
-                s.paused(LocalDate.now()) -> "Ⅱ Пауза: будильники отключены"
-                else -> "● Включён"
-            }, 12f, if (s.enabled) good else muted))
-            space(box, 12)
+            val info = stack()
+            val status = when {
+                !s.enabled -> "Выключен — сохранён, смены скрыты"
+                s.paused(LocalDate.now()) -> "Пауза — смены сохранены, сигналы отключены"
+                s.anchor == null -> "Не настроен — выбери дату начала"
+                else -> "Включён — календарь заполнен"
+            }
+            info.addView(text(status, 13f, if (s.enabled) good else muted, true))
+            space(info, 5)
+            info.addView(text("Первый день: " + (s.anchor?.toString() ?: "не назначен"), 12f, muted))
+            space(info, 5)
+            info.addView(text("Будильник: " + if (s.defaultAlarmEnabled) s.defaultAlarmTime else "по настройкам дней / отключён", 12f, muted))
+            box.addView(info)
+            space(box, 15)
             val firstRow = hrow()
             val activate = action(if (selected) "Активный" else "Выбрать", !selected) {
                 store.activeId = s.id
@@ -468,25 +497,71 @@ class ModernHomeActivity : Activity() {
     }
 
     private fun profileMenu(s: WorkSchedule) {
-        val options = arrayOf("Название и будильник", "Изменить цикл", "Дата начала", "Пауза или отпуск",
-            if (s.enabled) "Выключить график" else "Включить график", "Удалить график")
-        AlertDialog.Builder(this).setTitle(s.name).setItems(options) { _, which ->
-            when (which) {
-                0 -> editSchedule(s)
-                1 -> editCycle(s, false)
-                2 -> { store.activeId = s.id; choosingStartFor = s.id; tab = 0; changed() }
-                3 -> showPauses(s)
-                4 -> { s.enabled = !s.enabled; changed() }
-                5 -> AlertDialog.Builder(this).setTitle("Удалить график?")
-                    .setMessage("Данные, паузы и ручные изменения графика «" + s.name + "» будут удалены.")
-                    .setPositiveButton("Удалить") { _, _ ->
-                        store.schedules.removeAll { it.id == s.id }
-                        if (store.activeId == s.id) store.activeId = null
-                        if (choosingStartFor == s.id) choosingStartFor = null
-                        changed()
-                    }.setNegativeButton("Отмена", null).show()
+        val outer = stack().apply { setPadding(d(19), d(16), d(19), d(20)) }
+        outer.addView(text("НАСТРОЙКИ ГРАФИКА", 11f, primary, true))
+        space(outer, 5)
+        outer.addView(text(s.name, 22f, ink, true))
+        space(outer, 4)
+        outer.addView(text("Изменяйте только то, что необходимо", 13f, muted))
+        space(outer, 15)
+        val options = listOf(
+            Triple("✎", "Название и будильник", "Общие параметры графика"),
+            Triple("▦", "Изменить цикл", "Порядок смен, время, типы дней"),
+            Triple("▣", "Дата начала", "Выберите первый день в календаре"),
+            Triple("Ⅱ", "Пауза или отпуск", "Приостановить сигналы без сдвига смен"),
+            Triple("●", if (s.enabled) "Выключить график" else "Включить график", "График и настройки сохранятся"),
+            Triple("×", "Удалить график", "Без возможности восстановления")
+        )
+        val dialog = AlertDialog.Builder(this).create()
+        options.forEachIndexed { index, option ->
+            val row = hrow().apply {
+                setPadding(d(9), d(11), d(8), d(11))
+                background = shape(if (index == 5) 0xFFFFF3F4.toInt() else 0xFFF7F9FF.toInt(), 15)
             }
-        }.show()
+            val symbol = when (index) {
+                0 -> R.drawable.ic_nav_edit
+                1,2 -> R.drawable.ic_nav_calendar
+                3 -> R.drawable.ic_nav_pause
+                4 -> R.drawable.ic_nav_settings
+                else -> R.drawable.ic_nav_edit
+            }
+            row.addView(navIcon(symbol, if (index == 5) 0xFFD04D52.toInt() else primary).apply {
+                setPadding(d(8), d(8), d(8), d(8))
+            }, LinearLayout.LayoutParams(d(46), d(46)))
+            val words = stack()
+            words.addView(text(option.second, 15f, if (index == 5) 0xFFB43B4C.toInt() else ink, true))
+            space(words, 3)
+            words.addView(text(option.third, 12f, muted))
+            row.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(text("›", 25f, muted))
+            tap(row) {
+                dialog.dismiss()
+                when (index) {
+                    0 -> editSchedule(s)
+                    1 -> editCycle(s, false)
+                    2 -> { store.activeId = s.id; choosingStartFor = s.id; tab = 0; changed() }
+                    3 -> showPauses(s)
+                    4 -> { s.enabled = !s.enabled; changed() }
+                    5 -> AlertDialog.Builder(this).setTitle("Удалить график?")
+                        .setMessage("График «" + s.name + "», история пауз и ручные изменения будут удалены.")
+                        .setPositiveButton("Удалить") { _, _ ->
+                            store.schedules.removeAll { it.id == s.id }
+                            if (store.activeId == s.id) store.activeId = null
+                            if (choosingStartFor == s.id) choosingStartFor = null
+                            changed()
+                        }.setNegativeButton("Отмена", null).show()
+                }
+            }
+            wide(outer, row, 7)
+        }
+        space(outer, 3)
+        outer.addView(action("Закрыть", false) { dialog.dismiss() })
+        dialog.setView(ScrollView(this).apply { addView(outer) })
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(shape(Color.WHITE, 25))
+            dialog.window?.setLayout((resources.displayMetrics.widthPixels * .94f).toInt(), -2)
+        }
+        dialog.show()
     }
 
     private fun renderAlarms() {
@@ -594,24 +669,47 @@ class ModernHomeActivity : Activity() {
         wide(body, second)
     }
 
+    private fun navIcon(iconId: Int, tint: Int): ImageView = ImageView(this).apply {
+        setImageResource(iconId)
+        imageTintList = ColorStateList.valueOf(tint)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+    }
+
     private fun bottomBar() {
-        val wrap = hrow().apply {
-            setPadding(d(10), d(9), d(10), d(9))
-            background = shape(Color.WHITE, 0)
-            elevation = d(10).toFloat()
+        if (AlarmSoundService.ringing) {
+            val alarmRow = action("■  ОСТАНОВИТЬ БУДИЛЬНИК") { stopActiveAlarm() }
+            alarmRow.setBackgroundColor(0xFFCA3850.toInt())
+            wide(root, alarmRow)
         }
-        listOf("⌂" to "Главная", "▤" to "Графики", "◷" to "Будильники", "⚙" to "Настройки")
-            .forEachIndexed { index, item ->
-                val selected = tab == index
-                val label = text(item.first + "\n" + item.second, 11f,
-                    if (selected) primary else muted, selected).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(d(3), d(6), d(3), d(6))
-                    background = shape(if (selected) 0xFFEAF0FF.toInt() else Color.WHITE, 17)
-                }
-                tap(label) { tab = index; choosingStartFor = null; render() }
-                wrap.addView(label, LinearLayout.LayoutParams(0, d(61), 1f))
+        val wrap = hrow().apply {
+            setPadding(d(10), d(7), d(10), d(7))
+            background = shape(Color.WHITE, 0)
+            elevation = d(9).toFloat()
+        }
+        val items = listOf(
+            Triple(R.drawable.ic_nav_home, "Главная", 0),
+            Triple(R.drawable.ic_nav_calendar, "Графики", 1),
+            Triple(R.drawable.ic_nav_alarm, "Будильники", 2),
+            Triple(R.drawable.ic_nav_settings, "Настройки", 3)
+        )
+        items.forEach { (res, name, index) ->
+            val selected = tab == index
+            val column = stack().apply {
+                gravity = Gravity.CENTER
+                setPadding(d(1), d(7), d(1), d(7))
+                background = shape(if (selected) 0xFFE7EEFF.toInt() else Color.WHITE, 18)
             }
+            column.addView(navIcon(res, if (selected) primary else 0xFF687793.toInt()),
+                LinearLayout.LayoutParams(d(26), d(26)))
+            space(column, 4)
+            column.addView(text(name, 12f, if (selected) primary else muted, selected).apply {
+                gravity = Gravity.CENTER
+            })
+            tap(column) { tab = index; choosingStartFor = null; render() }
+            wrap.addView(column, LinearLayout.LayoutParams(0, d(63), 1f).apply {
+                marginStart = d(2); marginEnd = d(2)
+            })
+        }
         root.addView(wrap, LinearLayout.LayoutParams(-1, -2))
     }
 
