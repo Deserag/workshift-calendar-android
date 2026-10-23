@@ -564,58 +564,155 @@ class ModernHomeActivity : Activity() {
         dialog.show()
     }
 
+    private fun stopActiveAlarm() {
+        AlarmScheduler.cancelTest(this)
+        val stopped = stopService(Intent(this, AlarmSoundService::class.java))
+        toast(if (stopped) "Звук остановлен" else "Активного звонка нет; тест отменён")
+        render()
+    }
+
+    private fun notificationsAllowed(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    private fun fullScreenAllowed(): Boolean =
+        Build.VERSION.SDK_INT < 34 ||
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).canUseFullScreenIntent()
+
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed()) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 47)
+        }
+    }
+
+    private fun testAlarmSafely() {
+        if (!notificationsAllowed()) {
+            AlertDialog.Builder(this).setTitle("Сначала разрешите уведомления")
+                .setMessage("Без уведомления с кнопкой «Отключить» легко оказаться в ситуации, когда сигнал слышен, но остановить его неудобно. Тест пока не запущен.")
+                .setPositiveButton("Разрешить") { _, _ -> askNotificationPermission() }
+                .setNegativeButton("Отмена", null).show()
+            return
+        }
+        if (!AlarmScheduler.permitted(this)) {
+            AlertDialog.Builder(this).setTitle("Точные будильники выключены")
+                .setMessage("Разрешите приложению назначать точные сигналы в системных настройках.")
+                .setPositiveButton("Настройки") { _, _ -> openExactSettings() }
+                .setNegativeButton("Отмена", null).show()
+            return
+        }
+        if (!fullScreenAllowed()) {
+            AlertDialog.Builder(this).setTitle("Разрешите экран будильника")
+                .setMessage("На Android 14+ полноэкранные оповещения требуют отдельного доступа. После включения вернитесь и повторите тест.")
+                .setPositiveButton("Настройки") { _, _ -> openFullScreenSettings() }
+                .setNegativeButton("Отмена", null).show()
+            return
+        }
+        val ok = AlarmScheduler.scheduleTest(this)
+        if (ok) {
+            AlertDialog.Builder(this).setTitle("Тестовый сигнал установлен")
+                .setMessage("Сигнал зазвонит через одну минуту. В приложении и уведомлении есть кнопка «Остановить». Если заблокировать экран, откроется экран будильника.")
+                .setPositiveButton("Хорошо", null)
+                .setNeutralButton("Отменить тест") { _, _ -> AlarmScheduler.cancelTest(this); toast("Тест отменён") }
+                .show()
+        } else toast("Не удалось запланировать тест")
+    }
+
+    private fun openExactSettings() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    Uri.parse("package:" + packageName)))
+            }.onFailure {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + packageName)))
+            }
+        }
+    }
+
+    private fun openFullScreenSettings() {
+        if (Build.VERSION.SDK_INT >= 34) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                    Uri.parse("package:" + packageName)))
+            }.onFailure {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + packageName)))
+            }
+        }
+    }
+
+    private fun openSystemClock(alarm: AlarmEntry? = null) {
+        val act = if (alarm == null) AlarmClock.ACTION_SHOW_ALARMS else AlarmClock.ACTION_SET_ALARM
+        val intent = Intent(act)
+        if (alarm != null) {
+            val time = LocalTime.parse(alarm.time)
+            intent.putExtra(AlarmClock.EXTRA_HOUR, time.hour)
+            intent.putExtra(AlarmClock.EXTRA_MINUTES, time.minute)
+            intent.putExtra(AlarmClock.EXTRA_MESSAGE, "Смена: " + alarm.label)
+            intent.putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+        }
+        runCatching { startActivity(intent) }.onFailure {
+            toast("Системные Часы не поддерживают эту команду")
+        }
+    }
+
     private fun renderAlarms() {
         wide(body, text("Будильники", 24f, ink, true), 7)
-        wide(body, text("Будильник необязателен: его можно включить для всего графика или отдельной смены.", 13f, muted), 17)
-        val box = card()
-        val ok = AlarmScheduler.permitted(this)
-        box.addView(text(if (ok) "✓ Точные будильники разрешены" else "⚠ Нужен доступ к точным будильникам",
-            16f, if (ok) good else 0xFFB67122.toInt(), true))
-        space(box, 9)
-        box.addView(text("Для надёжного сигнала приложение использует системный AlarmManager, звук и вибрацию.", 13f, muted))
-        if (!ok) {
-            space(box, 12)
-            box.addView(action("Разрешить будильники") {
-                if (Build.VERSION.SDK_INT >= 31) {
-                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                        Uri.parse("package:" + packageName))
-                    runCatching { startActivity(intent) }.onFailure {
-                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:" + packageName)))
-                    }
-                }
-            })
-        }
-        if (Build.VERSION.SDK_INT >= 34 &&
-            !(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).canUseFullScreenIntent()) {
-            space(box, 8)
-            box.addView(action("Разрешить экран звонка", false) {
-                runCatching {
-                    startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                        Uri.parse("package:" + packageName)))
-                }
-            })
-        }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            space(box, 8)
-            box.addView(action("Разрешить уведомления", false) {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 47)
-            })
-        }
-        space(box, 12)
-        box.addView(action("⏰  Проверить через 1 минуту", false) {
-            if (AlarmScheduler.scheduleTest(this)) toast("Тестовый будильник установлен")
-            else toast("Сначала разрешите точные будильники")
-        })
-        wide(body, box, 15)
+        wide(body, text("Время сигнала можно задать для графика или любого дня отдельно. Настройка не обязательна.", 13f, muted), 16)
 
-        val s = store.active()
+        if (AlarmSoundService.ringing) {
+            wide(body, action("■  Остановить звонящий будильник") { stopActiveAlarm() }, 14)
+        }
+        val controls = card()
+        controls.addView(text("Проверка и управление", 18f, ink, true))
+        space(controls, 12)
+        controls.addView(action("Остановить звук / отменить тест", false) { stopActiveAlarm() })
+        space(controls, 10)
+        controls.addView(action("⏰  Проверить будильник через 1 минуту") { testAlarmSafely() })
+        space(controls, 8)
+        controls.addView(text("Тест запускается только после проверки разрешений. При звонке появятся кнопки «Отключить» и «Отложить».", 12f, muted))
+        wide(body, controls, 13)
+
+        val permissions = card()
+        permissions.addView(text("Разрешения Android", 18f, ink, true))
+        space(permissions, 10)
+        val exact = AlarmScheduler.permitted(this)
+        permissions.addView(text((if (exact) "✓" else "!") + "  Точное время сигнала",
+            14f, if (exact) good else 0xFFBB772C.toInt(), true))
+        if (!exact) {
+            space(permissions, 6)
+            permissions.addView(action("Разрешить точные будильники", false) { openExactSettings() })
+        }
+        space(permissions, 9)
+        permissions.addView(text((if (notificationsAllowed()) "✓" else "!") + "  Уведомления и кнопка отключения",
+            14f, if (notificationsAllowed()) good else 0xFFBB772C.toInt(), true))
+        if (!notificationsAllowed()) {
+            space(permissions, 6)
+            permissions.addView(action("Разрешить уведомления", false) { askNotificationPermission() })
+        }
+        space(permissions, 9)
+        permissions.addView(text((if (fullScreenAllowed()) "✓" else "!") + "  Экран звонка поверх блокировки",
+            14f, if (fullScreenAllowed()) good else 0xFFBB772C.toInt(), true))
+        if (!fullScreenAllowed()) {
+            space(permissions, 6)
+            permissions.addView(action("Разрешить экран будильника", false) { openFullScreenSettings() })
+        }
+        wide(body, permissions, 13)
+
+        val system = card()
+        system.addView(text("Системные «Часы»", 18f, ink, true))
+        space(system, 7)
+        system.addView(text("Можно открыть будильник телефона и перенести в него время. Android не предоставляет всем приложениям «Часы» универсальный способ автоматически создавать и удалять будильники на произвольную дату. Перенос вручную может привести к двум звонкам.", 12f, muted))
+        space(system, 11)
+        system.addView(action("Открыть системные Часы", false) { openSystemClock() })
+        wide(body, system, 13)
+
         val upcoming = card()
-        upcoming.addView(text("Ближайшие сигналы", 19f, ink, true))
-        space(upcoming, 11)
+        upcoming.addView(text("Ближайшие сигналы графика", 18f, ink, true))
+        space(upcoming, 12)
+        val s = store.active()
         if (s == null || !s.enabled) {
-            upcoming.addView(text("Включите и выберите график, чтобы увидеть будильники.", 13f, muted))
+            upcoming.addView(text("Включите график, чтобы появились его будильники.", 13f, muted))
         } else {
             val items = mutableListOf<Pair<LocalDate, AlarmEntry>>()
             var date = LocalDate.now()
@@ -623,16 +720,26 @@ class ModernHomeActivity : Activity() {
                 store.alarmForDate(date)?.let { items.add(date to it) }
                 date = date.plusDays(1)
             }
-            if (items.isEmpty()) upcoming.addView(text("Сигналов пока нет. Это нормально — будильники можно не использовать.", 13f, muted))
+            if (items.isEmpty()) upcoming.addView(text("Нет запланированных сигналов. Будильники необязательны.", 13f, muted))
             items.take(10).forEach { (day, alarm) ->
                 val row = hrow()
-                row.addView(text("◷", 24f, primary), LinearLayout.LayoutParams(d(37), -2))
-                val labels = stack()
+                row.addView(navIcon(R.drawable.ic_nav_alarm, primary), LinearLayout.LayoutParams(d(25), d(25)))
+                val labels = stack().apply { setPadding(d(10), 0, 0, 0) }
                 labels.addView(text(alarm.label, 14f, ink, true))
-                labels.addView(text(day.toString() + if (alarm.previousDay) " · накануне" else "", 11f, muted))
+                labels.addView(text(day.toString() + if (alarm.previousDay) " · накануне" else "", 12f, muted))
                 row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
                 row.addView(text(alarm.time, 17f, ink, true))
-                space(upcoming, 11); upcoming.addView(row); space(upcoming, 11); upcoming.addView(line())
+                space(upcoming, 7); upcoming.addView(row)
+                val launch = link("Создать такое время в системных Часах") {
+                    AlertDialog.Builder(this).setTitle("Открыть системные Часы?")
+                        .setMessage("Будет передано только время " + alarm.time +
+                            ". Конкретную дату смены Android передать не умеет. Проверьте день вручную и не оставляйте два будильника на одно время.")
+                        .setPositiveButton("Перейти") { _, _ -> openSystemClock(alarm) }
+                        .setNegativeButton("Отмена", null).show()
+                }
+                upcoming.addView(launch)
+                space(upcoming, 4)
+                upcoming.addView(line())
             }
         }
         wide(body, upcoming, 13)
