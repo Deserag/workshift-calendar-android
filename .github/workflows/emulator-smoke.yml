@@ -1,6 +1,9 @@
 name: UI smoke test on Android emulator
 
 on:
+  push:
+    paths:
+      - 'docs/QA.md'
   workflow_dispatch:
 
 permissions:
