@@ -198,41 +198,14 @@ class ShiftStore(context: Context) {
         s.steps.any { it.typeId == id } || s.overrides.values.any { it.typeId == id }
     }
 
-    fun forDate(date: LocalDate): CalendarEntry? {
-        val schedule = active() ?: return null
-        if (!schedule.enabled) return null
-        val start = schedule.anchor ?: return null
-        if (schedule.steps.isEmpty() || date.isBefore(start)) return null
-        val index = (ChronoUnit.DAYS.between(start, date) % schedule.steps.size).toInt()
-        val day = schedule.overrides[date.toString()] ?: schedule.steps[index]
-        val kind = type(day.typeId) ?: return null
-        val resolved = when (day.workMode) {
-            "CUSTOM" -> day
-            "OFF" -> day.copy(start = null, end = null)
-            else -> day.copy(start = kind.defaultStart, end = kind.defaultEnd)
-        }
-        return CalendarEntry(resolved, kind, schedule.paused(date))
-    }
+    fun forDate(date: LocalDate): CalendarEntry? =
+        ShiftRules.forDate(active(), types, date)
 
-    fun alarmForDate(date: LocalDate): AlarmEntry? {
-        val schedule = active() ?: return null
-        val entry = forDate(date) ?: return null
-        if (entry.paused || entry.type.rest) return null
-        val day = entry.day
-        return when (day.alarmMode) {
-            "OFF" -> null
-            "ON" -> day.alarmTime?.let { AlarmEntry(it, day.alarmPreviousDay, entry.type.name) }
-            else -> when (entry.type.alarmMode) {
-                "OFF" -> null
-                "ON" -> entry.type.alarmTime?.let {
-                    AlarmEntry(it, entry.type.alarmPreviousDay, entry.type.name)
-                }
-                else -> if (schedule.defaultAlarmEnabled)
-                    AlarmEntry(schedule.defaultAlarmTime, schedule.defaultAlarmPreviousDay, entry.type.name)
-                else null
-            }
-        }
-    }
+    fun alarmForDate(date: LocalDate): AlarmEntry? =
+        ShiftRules.alarmForDate(active(), types, date)
+
+    fun alarmSource(date: LocalDate): String =
+        ShiftRules.alarmSource(active(), types, date)
 
     fun addPause(schedule: WorkSchedule, from: LocalDate, until: LocalDate?): Boolean {
         if (until != null && until.isBefore(from)) return false
