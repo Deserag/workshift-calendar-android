@@ -38,6 +38,9 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Test shift and alarm rules
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
+
       - name: Build APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
