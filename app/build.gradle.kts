@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.workshift"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.5.0"
     }
 
     compileOptions {
@@ -20,4 +20,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }
