@@ -2,6 +2,9 @@ name: UI smoke test on Android emulator
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/emulator-smoke.yml'
 
 permissions:
   contents: read
@@ -42,16 +45,14 @@ jobs:
             sleep 4
             adb shell input keyevent KEYCODE_BACK || true
             sleep 2
-            adb shell screencap -p /sdcard/workshift_360.png
-            adb pull /sdcard/workshift_360.png emulator-screens/api${{ matrix.api }}_360dp.png
+            adb exec-out screencap -p > emulator-screens/api${{ matrix.api }}_360dp.png
             adb shell wm size 1030x2290
-            adb shell wm density 420
+            adb shell wm density 400
             adb shell am force-stop com.example.workshift
             adb shell am start -n com.example.workshift/.ModernHomeActivity
             sleep 3
             adb shell input keyevent KEYCODE_BACK || true
-            adb shell screencap -p /sdcard/workshift_412.png
-            adb pull /sdcard/workshift_412.png emulator-screens/api${{ matrix.api }}_412dp.png
+            adb exec-out screencap -p > emulator-screens/api${{ matrix.api }}_412dp.png
             adb shell pidof com.example.workshift
             adb logcat -d -v brief > emulator-screens/logcat_api${{ matrix.api }}.txt
       - name: Upload screenshots and diagnostic logs
