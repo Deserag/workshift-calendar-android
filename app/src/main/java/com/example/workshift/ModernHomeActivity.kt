@@ -164,7 +164,7 @@ class ModernHomeActivity : Activity() {
     }
     private fun changed() {
         store.save()
-        AlarmScheduler.reschedule(this)
+        AlarmScheduler.reschedule(this, cancelSnoozes = true)
         render()
     }
 
@@ -1665,7 +1665,7 @@ class ModernHomeActivity : Activity() {
         refill()
         if (s.paused(LocalDate.now())) {
             panel.addView(action("Вернуться к работе сегодня", false) {
-                store.resumeToday(s); AlarmScheduler.reschedule(this); render(); refill()
+                store.resumeToday(s); AlarmScheduler.reschedule(this, cancelSnoozes = true); render(); refill()
             })
         }
         var start = LocalDate.now()
@@ -1684,7 +1684,7 @@ class ModernHomeActivity : Activity() {
         space(panel, 13)
         panel.addView(action("Добавить паузу") {
             if (store.addPause(s, start, if (infinite.isChecked) null else end)) {
-                AlarmScheduler.reschedule(this); render(); refill(); toast("Пауза сохранена")
+                AlarmScheduler.reschedule(this, cancelSnoozes = true); render(); refill(); toast("Пауза сохранена")
             } else toast("Пауза пересекается с существующей или неверно указаны даты")
         })
         AlertDialog.Builder(this).setTitle("Паузы · " + s.name)
