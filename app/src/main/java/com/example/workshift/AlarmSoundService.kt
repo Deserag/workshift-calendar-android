@@ -22,6 +22,12 @@ import android.os.VibratorManager
 import android.util.Log
 
 class AlarmSoundService : Service() {
+    companion object {
+        @Volatile var ringing: Boolean = false
+            private set
+        const val ACTION_STOP = "com.example.workshift.STOP_RINGING"
+        private const val ALARM_CHANNEL = "rings_v2"
+    }
     private val handler = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
     private var vibrator: Vibrator? = null
@@ -31,6 +37,10 @@ class AlarmSoundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val title = intent?.getStringExtra("title") ?: "Рабочая смена"
         val requestId = intent?.getIntExtra("requestId", 0) ?: 0
         val scheduleId = intent?.getStringExtra("scheduleId")
@@ -40,6 +50,7 @@ class AlarmSoundService : Service() {
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else startForeground(1001, notification)
+        ringing = true
         play()
         handler.removeCallbacks(timeout)
         handler.postDelayed(timeout, 10 * 60_000L)
@@ -48,7 +59,7 @@ class AlarmSoundService : Service() {
 
     private fun createChannel() {
         val channel = NotificationChannel(
-            "rings_v1", "Активные будильники", NotificationManager.IMPORTANCE_HIGH
+            ALARM_CHANNEL, "Звонящие будильники", NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Полноэкранное оповещение о рабочей смене"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -84,7 +95,7 @@ class AlarmSoundService : Service() {
         val fullPending = PendingIntent.getActivity(
             this, id, full, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return Notification.Builder(this, "rings_v1")
+        return Notification.Builder(this, ALARM_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Будильник: $title")
             .setContentText("Пора готовиться к смене")
@@ -140,6 +151,7 @@ class AlarmSoundService : Service() {
     }
 
     override fun onDestroy() {
+        ringing = false
         handler.removeCallbacks(timeout)
         player?.let { runCatching { it.stop() }; it.release() }
         player = null
