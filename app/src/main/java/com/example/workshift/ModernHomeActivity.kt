@@ -580,11 +580,31 @@ class ModernHomeActivity : Activity() {
             labels.addView(text(hours, 13f, muted))
             row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
             val alarm = store.alarmForDate(date)
-            row.addView(text(if (alarm == null) "♢" else "⏰\n" + alarm.time,
-                12f, muted, false).apply { gravity = Gravity.CENTER })
+            row.addView(text(if (alarm == null) "Без сигнала" else "◷ " + alarm.time,
+                12f, if (alarm == null) muted else primary, alarm != null).apply { gravity = Gravity.CENTER })
             outer.addView(row)
+            space(outer, 8)
+            outer.addView(text("Будильник: " + store.alarmSource(date), 12f, muted))
             space(outer, 13)
-            outer.addView(action("Изменить этот день", false) { editOverride(date) })
+            outer.addView(action("Быстро заменить тип дня", false) { quickReplaceDay(date) })
+            space(outer, 6)
+            outer.addView(action("Изменить часы и будильник", false) { editOverride(date) })
+            space(outer, 6)
+            val navigation = hrow()
+            navigation.addView(action("‹ Предыдущий день", false) {
+                selectedDate = date.minusDays(1)
+                shownMonth = YearMonth.from(selectedDate)
+                render()
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            navigation.addView(View(this), LinearLayout.LayoutParams(d(7), 1))
+            navigation.addView(action("Следующий день ›", false) {
+                selectedDate = date.plusDays(1)
+                shownMonth = YearMonth.from(selectedDate)
+                render()
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            outer.addView(navigation)
+            space(outer, 7)
+            outer.addView(text("Изменение этого дня не сдвигает и не меняет основной цикл.", 12f, muted))
             if (store.active()?.let { store.hasOverride(it, date) } == true) {
                 outer.addView(link("Вернуть день из цикла") {
                     store.active()?.overrides?.remove(date.toString()); changed()
@@ -592,6 +612,49 @@ class ModernHomeActivity : Activity() {
             }
         }
         wide(body, outer)
+    }
+
+    private fun quickReplaceDay(date: LocalDate) {
+        val schedule = store.active() ?: return
+        if (store.forDate(date) == null) return
+        val panel = editorPanel()
+        panel.addView(text("Изменение только на " + date.toString(), 16f, ink, true))
+        space(panel, 6)
+        panel.addView(text("Остальные дни и порядок смен останутся прежними. Выберите новый тип дня.", 13f, muted))
+        space(panel, 12)
+        val dialog = AlertDialog.Builder(this).create()
+        store.types.forEach { type ->
+            val row = hrow().apply {
+                setPadding(d(12), d(11), d(12), d(11))
+                background = shape(type.color, 15)
+            }
+            row.addView(navIcon(iconFor(type), primary),
+                LinearLayout.LayoutParams(d(30), d(30)).apply { marginEnd = d(11) })
+            row.addView(text(type.name, 16f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(text("›", 24f, muted))
+            tap(row) {
+                schedule.overrides[date.toString()] = ShiftDay(typeId = type.id)
+                changed()
+                dialog.dismiss()
+                toast("Изменён только " + date.toString())
+            }
+            wide(panel, row, 7)
+        }
+        if (schedule.overrides.containsKey(date.toString())) {
+            space(panel, 5)
+            panel.addView(action("Вернуть смену из основного цикла", false) {
+                schedule.overrides.remove(date.toString())
+                changed()
+                dialog.dismiss()
+            })
+        }
+        space(panel, 8)
+        panel.addView(action("Создать другой тип дня", false) {
+            editType(null) { dialog.dismiss(); quickReplaceDay(date) }
+        })
+        dialog.setView(dialogScroll(panel))
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "Назад") { _, _ -> }
+        showEditor(dialog)
     }
 
     private fun editOverride(date: LocalDate) {
@@ -614,9 +677,10 @@ class ModernHomeActivity : Activity() {
         store.schedules.toList().forEach { s ->
             val selected = s.id == store.activeId
             val box = card()
+            if (selected) box.background = shape(0xFFF0F5FF.toInt(), 24, primary)
             val row = hrow()
             val labels = stack()
-            labels.addView(text(s.name, 19f, ink, true))
+            labels.addView(text((if (selected) "●  " else "") + s.name, 19f, ink, true))
             space(labels, 5)
             labels.addView(text("Повторяется каждые " + s.steps.size + " дн.", 13f, muted))
             row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
@@ -1227,7 +1291,14 @@ class ModernHomeActivity : Activity() {
             editDay(ShiftDay(first.id)) { days.add(it); redraw() }
         })
         space(panel, 9)
-        panel.addView(link("Настроить типы и цвета") { showTypes() })
+        panel.addView(action("＋ Создать новый тип дня", false) {
+            editType(null) {
+                val newest = store.types.lastOrNull() ?: return@editType
+                editDay(ShiftDay(newest.id)) { days.add(it); redraw() }
+            }
+        })
+        space(panel, 8)
+        panel.addView(link("Настроить все типы и цвета") { showTypes() })
         val dlg = AlertDialog.Builder(this).setTitle("Цикл · " + s.name)
             .setView(dialogScroll(panel))
             .setPositiveButton(if (isNew) "Создать график" else "Сохранить", null)
@@ -1272,7 +1343,7 @@ class ModernHomeActivity : Activity() {
     private fun editDay(original: ShiftDay, onSave: (ShiftDay) -> Unit) {
         if (store.types.isEmpty()) { toast("Сначала добавьте тип дня"); return }
         val panel = editorPanel()
-        val types = store.types.toList()
+        val types = store.types.toMutableList()
         panel.addView(text("Тип дня", 14f, ink, true))
         val typeSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(this@ModernHomeActivity,
@@ -1280,6 +1351,15 @@ class ModernHomeActivity : Activity() {
             setSelection(types.indexOfFirst { it.id == original.typeId }.coerceAtLeast(0))
         }
         panel.addView(typeSpinner)
+        panel.addView(action("＋ Добавить новый тип дня", false) {
+            editType(null) {
+                types.clear()
+                types.addAll(store.types)
+                typeSpinner.adapter = ArrayAdapter(this@ModernHomeActivity,
+                    android.R.layout.simple_spinner_dropdown_item, types.map { it.name })
+                typeSpinner.setSelection(types.lastIndex)
+            }
+        })
         space(panel, 12)
 
         panel.addView(text("Рабочее время", 15f, ink, true))
