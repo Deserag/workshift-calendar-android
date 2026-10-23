@@ -1,0 +1,63 @@
+name: UI smoke test on Android emulator
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Launch app and capture layouts
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -eu
+            mkdir -p emulator-screens
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm grant com.example.workshift android.permission.POST_NOTIFICATIONS || true
+            adb shell wm size 360x800
+            adb shell wm density 420
+            adb shell am start -n com.example.workshift/.ModernHomeActivity
+            sleep 4
+            adb shell input keyevent KEYCODE_BACK || true
+            sleep 2
+            adb shell screencap -p /sdcard/workshift_360.png
+            adb pull /sdcard/workshift_360.png emulator-screens/api${{ matrix.api }}_360.png
+            adb shell wm size 412x915
+            adb shell wm density 420
+            adb shell am force-stop com.example.workshift
+            adb shell am start -n com.example.workshift/.ModernHomeActivity
+            sleep 3
+            adb shell input keyevent KEYCODE_BACK || true
+            adb shell screencap -p /sdcard/workshift_412.png
+            adb pull /sdcard/workshift_412.png emulator-screens/api${{ matrix.api }}_412.png
+            adb shell pidof com.example.workshift
+            adb logcat -d -v brief > emulator-screens/logcat_api${{ matrix.api }}.txt
+      - name: Upload screenshots and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-screens-api${{ matrix.api }}
+          path: emulator-screens/
+          if-no-files-found: warn
