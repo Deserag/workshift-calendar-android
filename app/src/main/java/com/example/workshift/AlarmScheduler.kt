@@ -66,6 +66,9 @@ object AlarmScheduler {
         val pending = pendingAlarm(context, TEST_ID, "Проверка будильника")
         manager(context).cancel(pending)
         pending.cancel()
+        val delayed = pendingAlarm(context, TEST_ID + SNOOZE_OFFSET, "Проверка будильника")
+        manager(context).cancel(delayed)
+        delayed.cancel()
     }
 
     fun snooze(context: Context, requestId: Int, title: String, scheduleId: String?, shiftDate: String?): Boolean {
