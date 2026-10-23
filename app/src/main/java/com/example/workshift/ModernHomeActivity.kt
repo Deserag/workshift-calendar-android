@@ -848,6 +848,14 @@ class ModernHomeActivity : Activity() {
         root.addView(wrap, LinearLayout.LayoutParams(-1, -2))
     }
 
+    private fun showEditor(dialog: AlertDialog) {
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(shape(Color.WHITE, 24))
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.94f).toInt(), -2)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(primary)
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(muted)
+    }
+
     private fun editorPanel(): LinearLayout =
         stack().apply { setPadding(d(21), d(12), d(21), d(18)) }
     private fun dialogScroll(panel: LinearLayout) =
@@ -927,7 +935,7 @@ class ModernHomeActivity : Activity() {
                 else changed()
             }
         }
-        dlg.show()
+        showEditor(dlg)
     }
 
     private fun editCycle(s: WorkSchedule, isNew: Boolean) {
@@ -1007,7 +1015,7 @@ class ModernHomeActivity : Activity() {
                 } else apply()
             }
         }
-        dlg.show()
+        showEditor(dlg)
     }
 
     private fun editDay(original: ShiftDay, onSave: (ShiftDay) -> Unit) {
@@ -1081,7 +1089,7 @@ class ModernHomeActivity : Activity() {
                 dlg.dismiss()
             }
         }
-        dlg.show()
+        showEditor(dlg)
     }
 
     private fun showTypes() {
@@ -1158,7 +1166,7 @@ class ModernHomeActivity : Activity() {
                 changed(); after(); dlg.dismiss()
             }
         }
-        dlg.show()
+        showEditor(dlg)
     }
 
     private fun showPauses(s: WorkSchedule) {
