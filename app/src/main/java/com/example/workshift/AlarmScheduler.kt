@@ -17,6 +17,7 @@ object AlarmScheduler {
     private const val REFRESH_ID = 90000002
     private const val SNOOZE_OFFSET = 200_000_000
     private const val TRACKING = "scheduled_request_codes"
+    private const val SNOOZE_TRACKING = "snoozed_request_codes"
 
     private fun manager(context: Context): AlarmManager =
         context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -67,9 +68,17 @@ object AlarmScheduler {
         pending.cancel()
     }
 
-    fun snooze(context: Context, requestId: Int, title: String, scheduleId: String?, shiftDate: String?): Boolean =
-        at(context, if (requestId >= SNOOZE_OFFSET) requestId else requestId + SNOOZE_OFFSET,
-            title, System.currentTimeMillis() + 5 * 60_000, scheduleId, shiftDate)
+    fun snooze(context: Context, requestId: Int, title: String, scheduleId: String?, shiftDate: String?): Boolean {
+        val id = if (requestId >= SNOOZE_OFFSET) requestId else requestId + SNOOZE_OFFSET
+        val result = at(context, id, title, System.currentTimeMillis() + 5 * 60_000, scheduleId, shiftDate)
+        if (result) {
+            val tracking = context.getSharedPreferences("alarm_tracking_v1", Context.MODE_PRIVATE)
+            val old = tracking.getString(SNOOZE_TRACKING, "").orEmpty().split(',').filter { it.isNotBlank() }.toMutableSet()
+            old.add(id.toString())
+            tracking.edit().putString(SNOOZE_TRACKING, old.joinToString(",")).apply()
+        }
+        return result
+    }
 
     private fun refreshIntent(context: Context): PendingIntent {
         val intent = Intent(context, RefreshReceiver::class.java).apply {
@@ -83,7 +92,7 @@ object AlarmScheduler {
 
     /** Clear previously scheduled dates, then rebuild current + next month. */
     @Synchronized
-    fun reschedule(context: Context): Int {
+    fun reschedule(context: Context, cancelSnoozes: Boolean = false): Int {
         val app = context.applicationContext
         val tracking = app.getSharedPreferences("alarm_tracking_v1", Context.MODE_PRIVATE)
         val old = tracking.getString(TRACKING, "").orEmpty()
@@ -95,6 +104,15 @@ object AlarmScheduler {
         }
         manager(app).cancel(refreshIntent(app))
         tracking.edit().remove(TRACKING).commit()
+        if (cancelSnoozes) {
+            tracking.getString(SNOOZE_TRACKING, "").orEmpty().split(',')
+                .mapNotNull { it.toIntOrNull() }.forEach { id ->
+                    val intent = pendingAlarm(app, id, "")
+                    manager(app).cancel(intent)
+                    intent.cancel()
+                }
+            tracking.edit().remove(SNOOZE_TRACKING).apply()
+        }
 
         if (!permitted(app)) return 0
         val store = ShiftStore(app)
@@ -108,7 +126,7 @@ object AlarmScheduler {
             val alarm = store.alarmForDate(date)
             if (alarm != null) {
                 val atDate = if (alarm.previousDay) date.minusDays(1) else date
-                val whenLocal = LocalDateTime.of(atDate, LocalTime.parse(alarm.time))
+                val whenLocal = ShiftRules.moment(date, alarm)
                 val millis = whenLocal.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val requestId = date.toEpochDay().toInt() + 1_000_000
                 if (at(app, requestId, "${alarm.label} • $date", millis, active.id, date.toString())) {
