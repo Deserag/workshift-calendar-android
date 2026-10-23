@@ -1,0 +1,68 @@
+name: Build signed release for stores
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Check signing secrets and extract private keystore
+        shell: bash
+        env:
+          STORE_B64: ${{ secrets.WORKSHIFT_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.WORKSHIFT_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.WORKSHIFT_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.WORKSHIFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$STORE_B64" ] || [ -z "$STORE_PASS" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASS" ]; then
+            echo "::error::Configure the four WORKSHIFT_* secrets described in docs/RELEASE.md before running."
+            exit 1
+          fi
+          KEYFILE="$RUNNER_TEMP/workshift-release.jks"
+          printf '%s' "$STORE_B64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          echo "WORKSHIFT_RELEASE_KEYSTORE=$KEYFILE" >> "$GITHUB_ENV"
+          echo "WORKSHIFT_KEYSTORE_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
+          echo "WORKSHIFT_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "WORKSHIFT_KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
+      - name: Test and build signed APK / AAB
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease
+      - name: Verify release APK signature
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+      - name: Upload signed store builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshift-signed-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+      - name: Delete private signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/workshift-release.jks"
