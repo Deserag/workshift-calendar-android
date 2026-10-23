@@ -1074,70 +1074,123 @@ class ModernHomeActivity : Activity() {
         if (store.types.isEmpty()) { toast("Сначала добавьте тип дня"); return }
         val panel = editorPanel()
         val types = store.types.toList()
-        panel.addView(text("Тип дня", 13f, muted, true))
-        val spinner = Spinner(this).apply {
+        panel.addView(text("Тип дня", 14f, ink, true))
+        val typeSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(this@ModernHomeActivity,
                 android.R.layout.simple_spinner_dropdown_item, types.map { it.name })
             setSelection(types.indexOfFirst { it.id == original.typeId }.coerceAtLeast(0))
         }
-        panel.addView(spinner)
-        val hours = CheckBox(this).apply {
-            text = "Указать рабочее время"; isChecked = original.start != null && original.end != null
+        panel.addView(typeSpinner)
+        space(panel, 12)
+
+        panel.addView(text("Рабочее время", 15f, ink, true))
+        space(panel, 3)
+        panel.addView(text("Обычно берётся из типа дня. Для этого дня можно выбрать своё время.", 12f, muted))
+        val workOptions = listOf("Из типа дня", "Свои часы", "Без времени")
+        val workMode = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ModernHomeActivity,
+                android.R.layout.simple_spinner_dropdown_item, workOptions)
+            setSelection(when (original.workMode) { "CUSTOM" -> 1; "OFF" -> 2; else -> 0 })
         }
-        panel.addView(hours)
-        var from = original.start ?: "09:00"
-        var until = original.end ?: "18:00"
+        panel.addView(workMode)
+        val workSource = text("", 12f, primary)
+        panel.addView(workSource)
+        space(panel, 7)
+        var from = original.start ?: "08:00"
+        var until = original.end ?: "20:00"
         val start = selectTime("Начало смены", from) { from = it }
         val end = selectTime("Конец смены", until) { until = it }
         panel.addView(start); space(panel, 7); panel.addView(end)
-        space(panel, 14)
-        panel.addView(text("Будильник", 13f, muted, true))
-        val mode = Spinner(this).apply {
+
+        space(panel, 17)
+        panel.addView(text("Будильник перед сменой", 15f, ink, true))
+        space(panel, 3)
+        panel.addView(text("Можно наследовать из типа, поставить свой или отключить.", 12f, muted))
+        val alarmOptions = listOf("Из типа дня / графика", "Свой будильник", "Без будильника")
+        val alarmMode = Spinner(this).apply {
             adapter = ArrayAdapter(this@ModernHomeActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                listOf("По настройке графика", "Отдельный будильник", "Без будильника"))
+                android.R.layout.simple_spinner_dropdown_item, alarmOptions)
             setSelection(when (original.alarmMode) { "ON" -> 1; "OFF" -> 2; else -> 0 })
         }
-        panel.addView(mode)
-        var alarmTime = original.alarmTime ?: "07:00"
-        val alarm = selectTime("Время будильника", alarmTime) { alarmTime = it }
-        panel.addView(alarm)
+        panel.addView(alarmMode)
+        val alarmSource = text("", 12f, primary)
+        panel.addView(alarmSource)
+        space(panel, 7)
+        var ringTime = original.alarmTime ?: store.type(original.typeId)?.alarmTime
+            ?: store.active()?.defaultAlarmTime ?: "07:00"
+        val ringButton = selectTime("Время будильника", ringTime) { ringTime = it }
+        panel.addView(ringButton)
         val previous = CheckBox(this).apply {
-            text = "Звонить за день до смены"; isChecked = original.alarmPreviousDay
+            text = "Звонить за день до смены"
+            isChecked = original.alarmPreviousDay
+            setTextColor(ink)
         }
         panel.addView(previous)
+
         fun refresh() {
-            val rest = types[spinner.selectedItemPosition.coerceAtLeast(0)].rest
-            hours.isEnabled = !rest
-            start.isEnabled = !rest && hours.isChecked
-            end.isEnabled = !rest && hours.isChecked
-            mode.isEnabled = !rest
-            alarm.isEnabled = !rest && mode.selectedItemPosition == 1
-            previous.isEnabled = !rest && mode.selectedItemPosition == 1
+            val kind = types[typeSpinner.selectedItemPosition.coerceAtLeast(0)]
+            val rest = kind.rest
+            workMode.isEnabled = !rest
+            start.isEnabled = !rest && workMode.selectedItemPosition == 1
+            end.isEnabled = !rest && workMode.selectedItemPosition == 1
+            workSource.text = when {
+                rest -> "Выходной — рабочего времени нет"
+                workMode.selectedItemPosition == 0 -> "Из типа «" + kind.name + "»: " +
+                    (if (kind.defaultStart != null && kind.defaultEnd != null)
+                        kind.defaultStart + " – " + kind.defaultEnd else "время не задано")
+                workMode.selectedItemPosition == 2 -> "Рабочее время отключено для этого дня"
+                else -> "Уникальное время только для этого дня"
+            }
+            alarmMode.isEnabled = !rest
+            ringButton.isEnabled = !rest && alarmMode.selectedItemPosition == 1
+            previous.isEnabled = !rest && alarmMode.selectedItemPosition == 1
+            alarmSource.text = when {
+                rest -> "Выходной — сигнал не назначается"
+                alarmMode.selectedItemPosition == 1 -> "Свое время, независимо от типа дня"
+                alarmMode.selectedItemPosition == 2 -> "Будильник отключён для этого дня"
+                kind.alarmMode == "ON" && kind.alarmTime != null ->
+                    "Из типа «" + kind.name + "»: " + kind.alarmTime
+                kind.alarmMode == "OFF" -> "В типе «" + kind.name + "» будильник отключён"
+                store.active()?.defaultAlarmEnabled == true ->
+                    "Из графика: " + store.active()?.defaultAlarmTime
+                else -> "Будильник не задан ни в типе, ни в графике"
+            }
         }
-        hours.setOnCheckedChangeListener { _, _ -> refresh() }
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) = refresh()
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
-        mode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        workMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) = refresh()
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+        alarmMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) = refresh()
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
         refresh()
         val dlg = AlertDialog.Builder(this).setTitle("Настроить день")
             .setView(dialogScroll(panel))
-            .setPositiveButton("Готово", null).setNegativeButton("Отмена", null).create()
+            .setPositiveButton("Готово", null)
+            .setNegativeButton("Отмена", null).create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val chosen = types[spinner.selectedItemPosition]
-                val withHours = hours.isChecked && !chosen.rest
-                val alarmMode = if (chosen.rest) "OFF" else when (mode.selectedItemPosition) {
+                val kind = types[typeSpinner.selectedItemPosition]
+                val modeWork = if (kind.rest) "OFF" else when (workMode.selectedItemPosition) {
+                    1 -> "CUSTOM"; 2 -> "OFF"; else -> "INHERIT"
+                }
+                val modeAlarm = if (kind.rest) "OFF" else when (alarmMode.selectedItemPosition) {
                     1 -> "ON"; 2 -> "OFF"; else -> "INHERIT"
                 }
-                onSave(ShiftDay(chosen.id,
-                    if (withHours) from else null, if (withHours) until else null,
-                    alarmMode, if (alarmMode == "ON") alarmTime else null, previous.isChecked))
+                onSave(ShiftDay(
+                    typeId = kind.id,
+                    start = if (modeWork == "CUSTOM") from else null,
+                    end = if (modeWork == "CUSTOM") until else null,
+                    alarmMode = modeAlarm,
+                    alarmTime = if (modeAlarm == "ON") ringTime else null,
+                    alarmPreviousDay = if (modeAlarm == "ON") previous.isChecked else false,
+                    workMode = modeWork
+                ))
                 dlg.dismiss()
             }
         }
@@ -1178,44 +1231,134 @@ class ModernHomeActivity : Activity() {
 
     private fun editType(existing: DayType?, after: () -> Unit) {
         val panel = editorPanel()
-        panel.addView(text("Название", 13f, muted))
-        val name = input(existing?.name ?: "", "Например, Ночная смена")
+        panel.addView(text("Название типа дня", 13f, muted, true))
+        val name = input(existing?.name ?: "", "Например, Дневная смена")
         panel.addView(name)
         val rest = CheckBox(this).apply {
-            text = "Выходной (будильники отключены)"
+            text = "Это выходной день"
             isChecked = existing?.rest ?: false
         }
         panel.addView(rest)
-        space(panel, 8)
-        panel.addView(text("Выберите цвет", 13f, muted, true))
+        space(panel, 12)
+        panel.addView(text("Цвет типа дня", 14f, ink, true))
         space(panel, 8)
         var chosen = existing?.color ?: colors[0]
-        val grid = GridLayout(this).apply { columnCount = 4 }
+        val colorGrid = GridLayout(this).apply { columnCount = 4 }
         fun redrawColors() {
-            grid.removeAllViews()
+            colorGrid.removeAllViews()
             colors.forEachIndexed { idx, color ->
-                val cell = text(if (color == chosen) "✓" else "", 18f, primary, true).apply {
+                val tile = text(if (chosen == color) "✓" else "", 18f, primary, true).apply {
                     gravity = Gravity.CENTER
                     background = shape(color, 12, if (chosen == color) primary else null)
-                    contentDescription = "Цвет " + (idx + 1).toString()
+                    contentDescription = "Цвет " + (idx + 1)
                 }
-                tap(cell) { chosen = color; redrawColors() }
-                grid.addView(cell, GridLayout.LayoutParams().apply {
-                    width = d(51); height = d(49); setMargins(d(3), d(3), d(3), d(3))
+                tap(tile) { chosen = color; redrawColors() }
+                colorGrid.addView(tile, GridLayout.LayoutParams().apply {
+                    width = d(52); height = d(46); setMargins(d(3), d(3), d(3), d(3))
                 })
             }
         }
-        redrawColors(); panel.addView(grid)
+        redrawColors()
+        panel.addView(colorGrid)
+        space(panel, 14)
+        panel.addView(text("Иконка типа дня", 14f, ink, true))
+        space(panel, 5)
+        panel.addView(text("Выберите значок — он будет виден в календаре.", 12f, muted))
+        space(panel, 8)
+        var icon = existing?.icon ?: if (existing?.rest == true) "rest" else "sun"
+        val iconGrid = GridLayout(this).apply { columnCount = 3 }
+        fun redrawIcons() {
+            iconGrid.removeAllViews()
+            iconOptions.forEachIndexed { i, pair ->
+                val view = stack().apply {
+                    gravity = Gravity.CENTER
+                    setPadding(d(4), d(8), d(4), d(6))
+                    background = shape(if (pair.first == icon) 0xFFE9EEFF.toInt() else 0xFFF7F9FD.toInt(),
+                        15, if (pair.first == icon) primary else null)
+                }
+                view.addView(navIcon(pair.second, primary),
+                    LinearLayout.LayoutParams(d(27), d(27)))
+                val names = listOf("Солнце", "Луна", "Отдых", "Работа", "Учёба", "Поездка",
+                    "Звезда", "Лист", "Дом")
+                space(view, 5)
+                view.addView(text(names[i], 11f, muted).apply { gravity = Gravity.CENTER })
+                tap(view) { icon = pair.first; redrawIcons() }
+                iconGrid.addView(view, GridLayout.LayoutParams().apply {
+                    width = d(79); height = d(65); setMargins(d(3), d(3), d(3), d(3))
+                })
+            }
+        }
+        redrawIcons()
+        panel.addView(iconGrid)
+        space(panel, 16)
+        panel.addView(text("Рабочие часы по умолчанию", 15f, ink, true))
+        panel.addView(text("При добавлении этого типа в цикл значения подставятся автоматически.", 12f, muted))
+        val hoursEnabled = CheckBox(this).apply {
+            text = "Указать рабочее время"
+            isChecked = existing?.defaultStart != null && existing.defaultEnd != null
+        }
+        panel.addView(hoursEnabled)
+        var from = existing?.defaultStart ?: "08:00"
+        var end = existing?.defaultEnd ?: "20:00"
+        val startBtn = selectTime("Начало работы", from) { from = it }
+        val endBtn = selectTime("Конец работы", end) { end = it }
+        panel.addView(startBtn); space(panel, 6); panel.addView(endBtn)
+        space(panel, 16)
+        panel.addView(text("Будильник по умолчанию", 15f, ink, true))
+        panel.addView(text("Можно задать здесь один раз, а в конкретном дне изменить или отключить.", 12f, muted))
+        val alarmChoice = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ModernHomeActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Из настроек графика", "Включён: собственное время", "Отключён"))
+            setSelection(when (existing?.alarmMode) { "ON" -> 1; "OFF" -> 2; else -> 0 })
+        }
+        panel.addView(alarmChoice)
+        var alarmTime = existing?.alarmTime ?: "07:00"
+        val alarmButton = selectTime("Время будильника", alarmTime) { alarmTime = it }
+        panel.addView(alarmButton)
+        val previous = CheckBox(this).apply {
+            text = "Звонить накануне смены"
+            isChecked = existing?.alarmPreviousDay ?: false
+        }
+        panel.addView(previous)
+        fun refresh() {
+            hoursEnabled.isEnabled = !rest.isChecked
+            startBtn.isEnabled = !rest.isChecked && hoursEnabled.isChecked
+            endBtn.isEnabled = !rest.isChecked && hoursEnabled.isChecked
+            alarmChoice.isEnabled = !rest.isChecked
+            alarmButton.isEnabled = !rest.isChecked && alarmChoice.selectedItemPosition == 1
+            previous.isEnabled = !rest.isChecked && alarmChoice.selectedItemPosition == 1
+        }
+        rest.setOnCheckedChangeListener { _, _ -> refresh() }
+        hoursEnabled.setOnCheckedChangeListener { _, _ -> refresh() }
+        alarmChoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) = refresh()
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+        refresh()
         val dlg = AlertDialog.Builder(this).setTitle(if (existing == null) "Новый тип дня" else "Изменить тип дня")
             .setView(dialogScroll(panel))
             .setPositiveButton("Сохранить", null).setNegativeButton("Отмена", null).create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val value = name.text.toString().trim()
-                if (value.isBlank()) { toast("Укажите название"); return@setOnClickListener }
-                if (existing == null) store.types.add(DayType(name = value, color = chosen, rest = rest.isChecked))
-                else { existing.name = value; existing.color = chosen; existing.rest = rest.isChecked }
-                changed(); after(); dlg.dismiss()
+                val title = name.text.toString().trim()
+                if (title.isBlank()) { toast("Укажите название типа дня"); return@setOnClickListener }
+                val item = existing ?: DayType(name = title, color = chosen)
+                item.name = title
+                item.color = chosen
+                item.rest = rest.isChecked
+                item.icon = icon
+                item.defaultStart = if (!item.rest && hoursEnabled.isChecked) from else null
+                item.defaultEnd = if (!item.rest && hoursEnabled.isChecked) end else null
+                item.alarmMode = if (item.rest) "OFF" else when (alarmChoice.selectedItemPosition) {
+                    1 -> "ON"; 2 -> "OFF"; else -> "INHERIT"
+                }
+                item.alarmTime = if (item.alarmMode == "ON") alarmTime else null
+                item.alarmPreviousDay = item.alarmMode == "ON" && previous.isChecked
+                if (existing == null) store.types.add(item)
+                changed()
+                after()
+                dlg.dismiss()
             }
         }
         showEditor(dlg)
