@@ -157,12 +157,18 @@ class ModernHomeActivity : Activity() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(surface) }
         setContentView(root)
         render()
+        window.decorView.post { offerNotificationSetupOnce() }
     }
 
     override fun onResume() {
         super.onResume()
         visibleActivity = WeakReference(this)
         AlarmScheduler.reschedule(this)
+        if (::root.isInitialized) render()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (::root.isInitialized) render()
     }
 
@@ -218,6 +224,15 @@ class ModernHomeActivity : Activity() {
 
     private fun renderHome() {
         mainCta()
+        if (!notificationsAllowed() || !AlarmScheduler.permitted(this) || !fullScreenAllowed()) {
+            val notice = card()
+            notice.addView(text("Настройте доступы для будильника", 15f, ink, true))
+            space(notice, 5)
+            notice.addView(text("Разрешения Android нужны для уведомления с отключением, точного сигнала и экрана звонка.", 12f, muted))
+            space(notice, 7)
+            notice.addView(action("Открыть настройки будильника", false) { tab = 2; render() })
+            wide(body, notice, 12)
+        }
         if (AlarmSoundService.ringing) {
             wide(body, action("■  Остановить звонящий будильник") { stopActiveAlarm() }, 15)
         }
@@ -569,6 +584,19 @@ class ModernHomeActivity : Activity() {
         val stopped = stopService(Intent(this, AlarmSoundService::class.java))
         toast(if (stopped) "Звук остановлен" else "Активного звонка нет; тест отменён")
         render()
+    }
+
+    private fun offerNotificationSetupOnce() {
+        if (Build.VERSION.SDK_INT < 33 || notificationsAllowed()) return
+        val prefs = getSharedPreferences("permissions_intro_v1", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("shown", false)) return
+        prefs.edit().putBoolean("shown", true).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Уведомления будильника")
+            .setMessage("Чтобы во время звонка появлялась кнопка «Отключить», разрешите уведомления. Точные сигналы и экран блокировки можно настроить в разделе «Будильники».")
+            .setPositiveButton("Разрешить") { _, _ -> askNotificationPermission() }
+            .setNegativeButton("Позже", null)
+            .show()
     }
 
     private fun notificationsAllowed(): Boolean =
