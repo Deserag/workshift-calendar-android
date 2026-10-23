@@ -828,6 +828,9 @@ class ModernHomeActivity : Activity() {
         AlarmScheduler.cancelTest(this)
         val stopped = stopService(Intent(this, AlarmSoundService::class.java))
         toast(if (stopped) "Звук остановлен" else "Активного звонка нет; тест отменён")
+        tab = 0
+        calendarExpanded = false
+        choosingStartFor = null
         render()
     }
 
