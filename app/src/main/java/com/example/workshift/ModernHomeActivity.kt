@@ -375,21 +375,31 @@ class ModernHomeActivity : Activity() {
             val entry = store.forDate(date)
             val selected = selectedDate == date
             val color = if (selected) primary else entry?.type?.color ?: 0xFFF7F8FC.toInt()
-            val marker = when {
-                entry == null -> ""
-                entry.paused -> "Ⅱ"
-                else -> entry.type.name.take(3)
-            }
-            val alarmMark = if (store.alarmForDate(date) != null) " ·" else ""
-            val cell = text(number.toString() + "\n" + marker + alarmMark,
-                13f, if (selected) Color.WHITE else ink, selected).apply {
+            val cell = stack().apply {
                 gravity = Gravity.CENTER
-                setPadding(0, d(5), 0, d(4))
+                setPadding(0, d(4), 0, d(4))
                 background = shape(color, 13, if (date == LocalDate.now() && !selected) primary else null)
                 contentDescription = date.toString() + " " + (entry?.type?.name ?: "без смены")
             }
+            cell.addView(text(number.toString(), 13f, if (selected) Color.WHITE else ink, selected).apply {
+                gravity = Gravity.CENTER
+            })
+            if (entry != null) {
+                val icon = navIcon(
+                    if (entry.paused) R.drawable.ic_nav_pause else iconFor(entry.type),
+                    if (selected) Color.WHITE else primary
+                )
+                cell.addView(icon, LinearLayout.LayoutParams(d(16), d(16)).apply {
+                    topMargin = d(2)
+                })
+            }
+            if (store.alarmForDate(date) != null) {
+                cell.addView(text("•", 11f, if (selected) Color.WHITE else primary, true).apply {
+                    gravity = Gravity.CENTER
+                })
+            }
             tap(cell) { selectDate(date) }
-            grid.addView(cell, params(51))
+            grid.addView(cell, params(55))
         }
         box.addView(grid)
         space(box, 12)
@@ -439,9 +449,9 @@ class ModernHomeActivity : Activity() {
             }
         } else {
             val row = hrow()
-            val emoji = if (entry.type.rest) "☕" else if (entry.type.name.contains("ноч", true)) "☾" else "☀"
-            row.addView(text(emoji, 25f, ink).apply {
-                gravity = Gravity.CENTER; background = shape(entry.type.color, 19)
+            row.addView(navIcon(iconFor(entry.type), primary).apply {
+                background = shape(entry.type.color, 19)
+                setPadding(d(13), d(13), d(13), d(13))
             }, LinearLayout.LayoutParams(d(56), d(56)))
             val labels = stack().apply { setPadding(d(12), 0, d(5), 0) }
             labels.addView(text(entry.type.name + if (entry.paused) " · пауза" else "", 16f, ink, true))
@@ -799,7 +809,10 @@ class ModernHomeActivity : Activity() {
         space(box, 14)
         store.types.forEach { type ->
             val row = hrow()
-            val color = View(this).apply { background = shape(type.color, 9) }
+            val color = navIcon(iconFor(type), primary).apply {
+                background = shape(type.color, 9)
+                setPadding(d(4), d(4), d(4), d(4))
+            }
             row.addView(color, LinearLayout.LayoutParams(d(24), d(24)))
             row.addView(text(type.name + if (type.rest) " · выходной" else "", 14f, ink).apply {
                 setPadding(d(11), 0, 0, 0)
@@ -1008,9 +1021,19 @@ class ModernHomeActivity : Activity() {
                     setPadding(d(10), d(9), d(10), d(8))
                     background = shape(type?.color ?: 0xFFE8EEFF.toInt(), 16)
                 }
-                cell.addView(text((i + 1).toString() + ".  " + (type?.name ?: "День") +
-                    (if (item.start != null) "  " + item.start + "–" + item.end else ""),
+                val top = hrow()
+                top.addView(navIcon(iconFor(type), primary),
+                    LinearLayout.LayoutParams(d(25), d(25)).apply { marginEnd = d(8) })
+                top.addView(text((i + 1).toString() + ".  " + (type?.name ?: "День"),
                     15f, ink, true))
+                cell.addView(top)
+                val effective = if (item.workMode == "INHERIT")
+                    listOf(type?.defaultStart, type?.defaultEnd)
+                else if (item.workMode == "CUSTOM") listOf(item.start, item.end)
+                else listOf(null, null)
+                val effectiveTime = if (effective[0] != null && effective[1] != null)
+                    effective[0] + "–" + effective[1] else "без времени"
+                cell.addView(text(effectiveTime, 12f, muted))
                 val tools = hrow()
                 tools.addView(link("↑") { if (i > 0) { val it = days.removeAt(i); days.add(i - 1, it); redraw() } })
                 tools.addView(link("↓") { if (i < days.lastIndex) { val it = days.removeAt(i); days.add(i + 1, it); redraw() } })
@@ -1208,8 +1231,10 @@ class ModernHomeActivity : Activity() {
             rows.removeAllViews()
             store.types.toList().forEach { type ->
                 val r = hrow()
-                r.addView(View(this).apply { background = shape(type.color, 10) },
-                    LinearLayout.LayoutParams(d(32), d(32)))
+                r.addView(navIcon(iconFor(type), primary).apply {
+                    background = shape(type.color, 10)
+                    setPadding(d(5), d(5), d(5), d(5))
+                }, LinearLayout.LayoutParams(d(32), d(32)))
                 r.addView(text(type.name + if (type.rest) " · выходной" else "", 14f, ink, true).apply {
                     setPadding(d(10), 0, 0, 0)
                 }, LinearLayout.LayoutParams(0, -2, 1f))
