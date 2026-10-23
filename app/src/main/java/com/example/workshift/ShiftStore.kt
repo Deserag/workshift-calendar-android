@@ -171,7 +171,8 @@ class ShiftStore(context: Context) {
                 id, if (rest) null else o.optString("start", "09:00"),
                 if (rest) null else o.optString("end", "18:00"),
                 if (o.optBoolean("alarm") && !rest) "ON" else "OFF",
-                o.optString("alarmTime", "07:00"), o.optBoolean("alarmPreviousDay")
+                o.optString("alarmTime", "07:00"), o.optBoolean("alarmPreviousDay"),
+                if (rest) "OFF" else "CUSTOM"
             )
         }
         val schedule = WorkSchedule(name = "Мой график")
