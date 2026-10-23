@@ -33,10 +33,10 @@ data class DayType(
             color = o.optInt("color", 0xFFE1F6EB.toInt()),
             rest = o.optBoolean("rest"),
             icon = o.optString("icon", if (o.optBoolean("rest")) "rest" else "sun"),
-            defaultStart = o.optString("defaultStart").ifBlank { null },
-            defaultEnd = o.optString("defaultEnd").ifBlank { null },
+            defaultStart = if (o.isNull("defaultStart")) null else o.optString("defaultStart").ifBlank { null },
+            defaultEnd = if (o.isNull("defaultEnd")) null else o.optString("defaultEnd").ifBlank { null },
             alarmMode = o.optString("alarmMode", "INHERIT"),
-            alarmTime = o.optString("alarmTime").ifBlank { null },
+            alarmTime = if (o.isNull("alarmTime")) null else o.optString("alarmTime").ifBlank { null },
             alarmPreviousDay = o.optBoolean("alarmPreviousDay")
         )
     }
