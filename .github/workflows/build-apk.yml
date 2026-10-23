@@ -44,9 +44,34 @@ jobs:
       - name: Build APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Inspect and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          VERIFY="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          AAPT="$SDK_ROOT/build-tools/35.0.0/aapt"
+          test -s "$APK"
+          "$VERIFY" verify --verbose --print-certs "$APK"
+          "$AAPT" dump permissions "$APK" | tee permissions.txt
+          if grep -Fq "android.permission.INTERNET" permissions.txt; then
+            echo "::error::Unexpected network permission found in APK"
+            exit 1
+          fi
+          OUTPUT="app/build/outputs/apk/debug/workshift-calendar-v0.5.0-debug.apk"
+          cp "$APK" "$OUTPUT"
+          echo "### Проверенный файл APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK собран, его подпись проверена; эти проверки **не заменяют антивирусное сканирование**." >> "$GITHUB_STEP_SUMMARY"
+          echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+
+      # GitHub Actions v7 can publish one file without wrapping it in an
+      # additional ZIP. Keep the real APK filename for easier scanning.
+      - name: Upload APK directly
+        uses: actions/upload-artifact@v7
         with:
-          name: workshift-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          archive: false
+          path: app/build/outputs/apk/debug/workshift-calendar-v0.5.0-debug.apk
           if-no-files-found: error
