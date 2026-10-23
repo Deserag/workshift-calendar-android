@@ -122,21 +122,30 @@ class AlarmSoundService : Service() {
             val power = getSystemService(Context.POWER_SERVICE) as PowerManager
             lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Workshift:AlarmSound")
             lock?.acquire(10 * 60_000L)
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-                )
-                setDataSource(this@AlarmSoundService, uri)
-                isLooping = true
-                prepare()
-                start()
+            fun startAudio(uri: android.net.Uri) {
+                player = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                    )
+                    setDataSource(this@AlarmSoundService, uri)
+                    isLooping = true
+                    prepare()
+                    start()
+                }
+            }
+            runCatching { startAudio(AlarmPreferences.ringtone(this)) }.onFailure { exception ->
+                Log.w("WorkshiftAlarm", "Chosen ringtone unavailable, using default alarm", exception)
+                player?.release()
+                player = null
+                val fallback = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                startAudio(fallback)
             }
         } catch (ex: Exception) {
             Log.e("WorkshiftAlarm", "Cannot play alarm tone", ex)
         }
+        if (!AlarmPreferences.vibrate(this)) return
         try {
             vibrator = if (Build.VERSION.SDK_INT >= 31) {
                 (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
@@ -152,6 +161,8 @@ class AlarmSoundService : Service() {
 
     override fun onDestroy() {
         ringing = false
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(1001)
         handler.removeCallbacks(timeout)
         player?.let { runCatching { it.stop() }; it.release() }
         player = null
