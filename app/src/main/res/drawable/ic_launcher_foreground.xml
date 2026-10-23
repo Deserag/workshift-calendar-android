@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Blue calendar base -->
+    <path android:fillColor="#EAF1FF"
+        android:pathData="M18,21 C18,17.7 20.7,15 24,15 L79,15 C82.3,15 85,17.7 85,21 L85,80 C85,83.3 82.3,86 79,86 L24,86 C20.7,86 18,83.3 18,80 Z"/>
+    <path android:fillColor="#3976FC"
+        android:pathData="M18,21 C18,17.7 20.7,15 24,15 L79,15 C82.3,15 85,17.7 85,21 L85,35 L18,35 Z"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M31,11 C29.3,11 28,12.3 28,14 L28,25 C28,26.7 29.3,28 31,28 C32.7,28 34,26.7 34,25 L34,14 C34,12.3 32.7,11 31,11 Z
+                          M72,11 C70.3,11 69,12.3 69,14 L69,25 C69,26.7 70.3,28 72,28 C73.7,28 75,26.7 75,25 L75,14 C75,12.3 73.7,11 72,11 Z"/>
+    <path android:fillColor="#C9D7F6"
+        android:pathData="M27,44 h11 v11 h-11 z M44,44 h11 v11 h-11 z M61,44 h11 v11 h-11 z M27,61 h11 v11 h-11 z M44,61 h11 v11 h-11 z"/>
+    <path android:fillColor="#10C99A"
+        android:pathData="M44,44 h11 v11 h-11 z"/>
+    <path android:fillColor="#4D7DFF"
+        android:pathData="M27,61 h11 v11 h-11 z"/>
+    <!-- Raised alarm bell and clock, simplified for legibility at 48dp -->
+    <path android:fillColor="#12CBEA"
+        android:pathData="M60,66 C60,51.6 71.6,40 86,40 C100.4,40 112,51.6 112,66 C112,80.4 100.4,92 86,92 C71.6,92 60,80.4 60,66 Z"/>
+    <path android:fillColor="#2254E8"
+        android:pathData="M64,66 C64,53.8 73.8,44 86,44 C98.2,44 108,53.8 108,66 C108,78.2 98.2,88 86,88 C73.8,88 64,78.2 64,66 Z"/>
+    <path android:fillColor="#F7FBFF"
+        android:pathData="M69,66 C69,56.6 76.6,49 86,49 C95.4,49 103,56.6 103,66 C103,75.4 95.4,83 86,83 C76.6,83 69,75.4 69,66 Z"/>
+    <path android:strokeColor="#1743C2" android:strokeWidth="3.6"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M86,55 L86,66 L95,60"/>
+    <path android:fillColor="#09CB92"
+        android:pathData="M82.8,66 a3.2,3.2 0,1 0,6.4 0 a3.2,3.2 0,1 0,-6.4 0"/>
+</vector>
