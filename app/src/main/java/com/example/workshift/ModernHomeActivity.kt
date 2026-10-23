@@ -1079,7 +1079,10 @@ class ModernHomeActivity : Activity() {
             isChecked = existing?.defaultAlarmPreviousDay ?: false
         }
         panel.addView(previous)
-        val update = { clock.isEnabled = default.isChecked; previous.isEnabled = default.isChecked }
+        val update = {
+            clock.visibility = if (default.isChecked) View.VISIBLE else View.GONE
+            previous.visibility = if (default.isChecked) View.VISIBLE else View.GONE
+        }
         default.setOnCheckedChangeListener { _, _ -> update() }; update()
         val dlg = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Добавить график" else "Настройки графика")
@@ -1255,8 +1258,8 @@ class ModernHomeActivity : Activity() {
             val kind = types[typeSpinner.selectedItemPosition.coerceAtLeast(0)]
             val rest = kind.rest
             workMode.isEnabled = !rest
-            start.isEnabled = !rest && workMode.selectedItemPosition == 1
-            end.isEnabled = !rest && workMode.selectedItemPosition == 1
+            start.visibility = if (!rest && workMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
+            end.visibility = if (!rest && workMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
             workSource.text = when {
                 rest -> "Выходной — рабочего времени нет"
                 workMode.selectedItemPosition == 0 -> "Из типа «" + kind.name + "»: " +
@@ -1266,8 +1269,8 @@ class ModernHomeActivity : Activity() {
                 else -> "Уникальное время только для этого дня"
             }
             alarmMode.isEnabled = !rest
-            ringButton.isEnabled = !rest && alarmMode.selectedItemPosition == 1
-            previous.isEnabled = !rest && alarmMode.selectedItemPosition == 1
+            ringButton.visibility = if (!rest && alarmMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
+            previous.visibility = if (!rest && alarmMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
             alarmSource.text = when {
                 rest -> "Выходной — сигнал не назначается"
                 alarmMode.selectedItemPosition == 1 -> "Свое время, независимо от типа дня"
@@ -1449,11 +1452,11 @@ class ModernHomeActivity : Activity() {
         panel.addView(previous)
         fun refresh() {
             hoursEnabled.isEnabled = !rest.isChecked
-            startBtn.isEnabled = !rest.isChecked && hoursEnabled.isChecked
-            endBtn.isEnabled = !rest.isChecked && hoursEnabled.isChecked
+            startBtn.visibility = if (!rest.isChecked && hoursEnabled.isChecked) View.VISIBLE else View.GONE
+            endBtn.visibility = if (!rest.isChecked && hoursEnabled.isChecked) View.VISIBLE else View.GONE
             alarmChoice.isEnabled = !rest.isChecked
-            alarmButton.isEnabled = !rest.isChecked && alarmChoice.selectedItemPosition == 1
-            previous.isEnabled = !rest.isChecked && alarmChoice.selectedItemPosition == 1
+            alarmButton.visibility = if (!rest.isChecked && alarmChoice.selectedItemPosition == 1) View.VISIBLE else View.GONE
+            previous.visibility = if (!rest.isChecked && alarmChoice.selectedItemPosition == 1) View.VISIBLE else View.GONE
         }
         rest.setOnCheckedChangeListener { _, _ -> refresh() }
         hoursEnabled.setOnCheckedChangeListener { _, _ -> refresh() }
