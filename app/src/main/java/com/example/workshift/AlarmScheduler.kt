@@ -40,7 +40,7 @@ object AlarmScheduler {
     }
 
     private fun showAlarm(context: Context): PendingIntent = PendingIntent.getActivity(
-        context, 17, Intent(context, MainActivity::class.java),
+        context, 17, Intent(context, ModernHomeActivity::class.java),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
