@@ -20,6 +20,25 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // A private release certificate is supplied only through GitHub Actions secrets
+    // or local environment variables. Never commit signing materials to this repo.
+    val keyStore = System.getenv("WORKSHIFT_RELEASE_KEYSTORE")
+    if (!keyStore.isNullOrBlank()) {
+        signingConfigs {
+            create("production") {
+                storeFile = file(keyStore)
+                storePassword = System.getenv("WORKSHIFT_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("WORKSHIFT_KEY_ALIAS")
+                keyPassword = System.getenv("WORKSHIFT_KEY_PASSWORD")
+            }
+        }
+        buildTypes {
+            getByName("release") {
+                signingConfig = signingConfigs.getByName("production")
+            }
+        }
+    }
 }
 
 
