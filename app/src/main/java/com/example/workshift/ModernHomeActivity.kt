@@ -86,6 +86,8 @@ class ModernHomeActivity : Activity() {
         iconOptions.firstOrNull { it.first == type?.icon }?.second
             ?: if (type?.rest == true) R.drawable.ic_type_rest else R.drawable.ic_type_sun
 
+    private var calendarExpanded = false
+    private var weeklyView = false
     private var tab = 0
     private var shownMonth: YearMonth = YearMonth.now()
     private var selectedDate: LocalDate = LocalDate.now()
@@ -203,6 +205,10 @@ class ModernHomeActivity : Activity() {
         body = stack().apply { setPadding(d(16), d(15), d(16), d(24)) }
         scroller.addView(body)
         root.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (calendarExpanded) {
+            renderExpandedCalendar()
+            return
+        }
         header()
         when (tab) {
             0 -> renderHome()
@@ -409,7 +415,102 @@ class ModernHomeActivity : Activity() {
         hint.addView(text("●  Цвета — типы дней", 11f, muted), LinearLayout.LayoutParams(0, -2, 1f))
         hint.addView(link("Сегодня") { shownMonth = YearMonth.now(); selectedDate = LocalDate.now(); render() })
         box.addView(hint)
+        if (!calendarExpanded) {
+            space(box, 8)
+            box.addView(action("⛶  Открыть на весь экран", false) {
+                calendarExpanded = true
+                weeklyView = false
+                render()
+            })
+        }
         wide(body, box)
+    }
+
+    private fun renderExpandedCalendar() {
+        val top = hrow()
+        top.addView(link("← Назад") { calendarExpanded = false; render() })
+        top.addView(text("Календарь смен", 22f, ink, true).apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        wide(body, top, 14)
+        val tabs = hrow()
+        tabs.addView(action(if (!weeklyView) "✓ Месяц" else "Месяц", !weeklyView) {
+            weeklyView = false; render()
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        tabs.addView(View(this), LinearLayout.LayoutParams(d(9), 1))
+        tabs.addView(action(if (weeklyView) "✓ Неделя" else "Неделя", weeklyView) {
+            weeklyView = true; render()
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        wide(body, tabs, 16)
+        if (weeklyView) weeklyCalendar() else calendarCard()
+        space(body, 11)
+        selectedDayCard()
+    }
+
+    private fun weeklyCalendar() {
+        val first = selectedDate.minusDays((selectedDate.dayOfWeek.value - 1).toLong())
+        val box = card()
+        val header = hrow()
+        header.addView(link("‹") { selectedDate = selectedDate.minusWeeks(1); render() }.apply {
+            textSize = 27f
+        })
+        header.addView(text("С " + first + " по " + first.plusDays(6), 15f, ink, true).apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(link("›") { selectedDate = selectedDate.plusWeeks(1); render() }.apply {
+            textSize = 27f
+        })
+        box.addView(header)
+        space(box, 11)
+        for (offset in 0L..6L) {
+            val date = first.plusDays(offset)
+            val entry = store.forDate(date)
+            val selected = date == selectedDate
+            val tile = hrow().apply {
+                setPadding(d(10), d(13), d(10), d(13))
+                background = shape(if (selected) 0xFFE8EEFF.toInt() else
+                    (entry?.type?.color ?: 0xFFF5F7FB.toInt()), 16)
+            }
+            val day = stack().apply { gravity = Gravity.CENTER }
+            day.addView(text(date.dayOfMonth.toString(), 21f, ink, true).apply {
+                gravity = Gravity.CENTER
+            })
+            day.addView(text(date.dayOfWeek.getDisplayName(
+                java.time.format.TextStyle.SHORT, Locale("ru", "RU")), 12f, muted).apply {
+                gravity = Gravity.CENTER
+            })
+            tile.addView(day, LinearLayout.LayoutParams(d(52), -2))
+            if (entry != null) {
+                tile.addView(navIcon(iconFor(entry.type), primary),
+                    LinearLayout.LayoutParams(d(26), d(26)).apply { marginEnd = d(10) })
+            }
+            val labels = stack()
+            labels.addView(text(entry?.type?.name ?: "Нет смены", 15f, ink, true))
+            val hours = entry?.day?.let { dayEntry ->
+                if (dayEntry.start != null && dayEntry.end != null) dayEntry.start + " – " + dayEntry.end
+                else "Без времени"
+            } ?: "Свободный день"
+            labels.addView(text(hours, 12f, muted))
+            tile.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+            val alarm = store.alarmForDate(date)
+            if (alarm != null) tile.addView(text("◷ " + alarm.time, 12f, primary, true))
+            tap(tile) { selectedDate = date; shownMonth = YearMonth.from(date); render() }
+            wide(box, tile, 7)
+        }
+        wide(body, box)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (calendarExpanded) {
+            calendarExpanded = false
+            render()
+        } else if (tab != 0) {
+            tab = 0
+            render()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun selectDate(date: LocalDate) {
