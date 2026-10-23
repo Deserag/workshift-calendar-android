@@ -178,8 +178,7 @@ class ModernHomeActivity : Activity() {
         setContentView(root)
         render()
         window.decorView.post {
-            offerNotificationSetupOnce()
-            offerFirstScheduleGuide()
+            if (!offerNotificationSetupOnce()) offerFirstScheduleGuide()
         }
     }
 
@@ -242,6 +241,7 @@ class ModernHomeActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (::root.isInitialized) render()
+        if (requestCode == 47) offerFirstScheduleGuide()
     }
 
     override fun onPause() {
@@ -843,17 +843,18 @@ class ModernHomeActivity : Activity() {
             .show()
     }
 
-    private fun offerNotificationSetupOnce() {
-        if (Build.VERSION.SDK_INT < 33 || notificationsAllowed()) return
+    private fun offerNotificationSetupOnce(): Boolean {
+        if (Build.VERSION.SDK_INT < 33 || notificationsAllowed()) return false
         val prefs = getSharedPreferences("permissions_intro_v1", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("shown", false)) return
+        if (prefs.getBoolean("shown", false)) return false
         prefs.edit().putBoolean("shown", true).apply()
         AlertDialog.Builder(this)
             .setTitle("Уведомления будильника")
             .setMessage("Чтобы во время звонка появлялась кнопка «Отключить», разрешите уведомления. Точные сигналы и экран блокировки можно настроить в разделе «Будильники».")
             .setPositiveButton("Разрешить") { _, _ -> askNotificationPermission() }
-            .setNegativeButton("Позже", null)
+            .setNegativeButton("Позже") { _, _ -> offerFirstScheduleGuide() }
             .show()
+        return true
     }
 
     private fun notificationsAllowed(): Boolean =
