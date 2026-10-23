@@ -36,22 +36,22 @@ jobs:
             mkdir -p emulator-screens
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell pm grant com.example.workshift android.permission.POST_NOTIFICATIONS || true
-            adb shell wm size 360x800
-            adb shell wm density 420
+            adb shell wm size 900x2000
+            adb shell wm density 400
             adb shell am start -n com.example.workshift/.ModernHomeActivity
             sleep 4
             adb shell input keyevent KEYCODE_BACK || true
             sleep 2
             adb shell screencap -p /sdcard/workshift_360.png
-            adb pull /sdcard/workshift_360.png emulator-screens/api${{ matrix.api }}_360.png
-            adb shell wm size 412x915
+            adb pull /sdcard/workshift_360.png emulator-screens/api${{ matrix.api }}_360dp.png
+            adb shell wm size 1030x2290
             adb shell wm density 420
             adb shell am force-stop com.example.workshift
             adb shell am start -n com.example.workshift/.ModernHomeActivity
             sleep 3
             adb shell input keyevent KEYCODE_BACK || true
             adb shell screencap -p /sdcard/workshift_412.png
-            adb pull /sdcard/workshift_412.png emulator-screens/api${{ matrix.api }}_412.png
+            adb pull /sdcard/workshift_412.png emulator-screens/api${{ matrix.api }}_412dp.png
             adb shell pidof com.example.workshift
             adb logcat -d -v brief > emulator-screens/logcat_api${{ matrix.api }}.txt
       - name: Upload screenshots and diagnostic logs
