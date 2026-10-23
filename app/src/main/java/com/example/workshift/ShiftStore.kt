@@ -182,6 +182,39 @@ class ShiftStore(context: Context) {
         activeId = schedule.id
     }
 
+    /** User-controlled backup for cross-signature transitions or device migrations. */
+    fun exportJson(): String {
+        save()
+        return prefs.getString("state", null) ?: error("No schedule data")
+    }
+
+    /** Validate the whole import before replacing anything in memory or on disk. */
+    fun importJson(raw: String) {
+        require(raw.length <= 2_000_000) { "Backup file is too large" }
+        val state = JSONObject(raw)
+        val t = state.optJSONArray("types") ?: error("Missing types")
+        val schedulesArray = state.optJSONArray("schedules") ?: error("Missing schedules")
+        val newTypes = (0 until t.length()).map { DayType.fromJson(t.getJSONObject(it)) }
+        val newSchedules = (0 until schedulesArray.length())
+            .map { WorkSchedule.fromJson(schedulesArray.getJSONObject(it)) }
+        require(newTypes.isNotEmpty()) { "At least one type is required" }
+        val ids = newTypes.map { it.id }.toSet()
+        require(ids.size == newTypes.size && ids.all { it.isNotBlank() }) { "Duplicate type ids" }
+        require(newSchedules.map { it.id }.distinct().size == newSchedules.size) { "Duplicate schedules" }
+        newSchedules.forEach { schedule ->
+            require(schedule.steps.all { it.typeId in ids }) { "Unknown type in schedule" }
+            require(schedule.overrides.values.all { it.typeId in ids }) { "Unknown type in calendar" }
+        }
+        val id = if (state.isNull("activeId")) null else state.optString("activeId").ifBlank { null }
+        require(id == null || newSchedules.any { it.id == id }) { "Unknown active schedule" }
+        types.clear()
+        types.addAll(newTypes)
+        schedules.clear()
+        schedules.addAll(newSchedules)
+        activeId = id
+        save()
+    }
+
     fun save() {
         val state = JSONObject().apply {
             put("types", JSONArray().apply { types.forEach { put(it.toJson()) } })
