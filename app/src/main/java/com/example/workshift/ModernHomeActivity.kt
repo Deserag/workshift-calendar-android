@@ -469,10 +469,22 @@ class ModernHomeActivity : Activity() {
                     topMargin = d(2)
                 })
             }
-            if (store.alarmForDate(date) != null) {
-                cell.addView(text("•", 11f, readableOn(color), true).apply {
+            val hasAlarm = store.alarmForDate(date) != null
+            val hasReminder = ShiftRules.reminderForDate(store.active(), store.types, date) != null
+            if (hasAlarm || hasReminder) {
+                cell.addView(text(
+                    when {
+                        hasAlarm && hasReminder -> "⏰ •"
+                        hasReminder -> "●"
+                        else -> "•"
+                    },
+                    10f, readableOn(color), true
+                ).apply {
                     gravity = Gravity.CENTER
                 })
+                cell.contentDescription = cell.contentDescription.toString() +
+                    (if (hasAlarm) ", будильник" else "") +
+                    (if (hasReminder) ", напоминание накануне" else "")
             }
             tap(cell) { selectDate(date) }
             grid.addView(cell, params(55))
@@ -567,6 +579,9 @@ class ModernHomeActivity : Activity() {
             tile.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
             val alarm = store.alarmForDate(date)
             if (alarm != null) tile.addView(text("◷ " + alarm.time, 12f, tileInk, true))
+            if (ShiftRules.reminderForDate(store.active(), store.types, date) != null) {
+                tile.addView(text("  🔔", 14f, tileInk, true))
+            }
             tap(tile) { selectedDate = date; shownMonth = YearMonth.from(date); render() }
             wide(box, tile, 7)
         }
