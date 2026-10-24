@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Only available in debuggable builds. No launcher icon, no release entrypoint. -->
+        <activity android:name=".StoreScreenshotActivity"
+                  android:exported="true"
+                  android:excludeFromRecents="true"
+                  android:permission="android.permission.DUMP" />
+    </application>
+</manifest>
