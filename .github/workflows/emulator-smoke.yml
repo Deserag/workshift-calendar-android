@@ -43,6 +43,8 @@ jobs:
             adb shell wm density 400
             adb shell am start -n com.example.workshift/.ModernHomeActivity
             sleep 4
+            # Verify the onboarding actually appears on a fresh install.
+            adb exec-out screencap -p > emulator-screens/api${{ matrix.api }}_first_launch.png
             adb shell input keyevent KEYCODE_BACK || true
             sleep 2
             adb exec-out screencap -p > emulator-screens/api${{ matrix.api }}_360dp.png
