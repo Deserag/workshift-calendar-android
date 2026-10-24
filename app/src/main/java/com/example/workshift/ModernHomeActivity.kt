@@ -912,16 +912,114 @@ class ModernHomeActivity : Activity() {
         render()
     }
 
+    private data class GuideStep(val title: String, val message: String, val tab: Int,
+                                 val action: String, val iconId: Int)
+
+    private val guideSteps get() = listOf(
+        GuideStep("Настройте свои типы дней",
+            "Тип дня — это цвет, иконка, часы работы и необязательный будильник. Создайте, например, «День», «Ночь» и «Выходной». Все графики смогут их использовать.",
+            3, "Открыть типы дней", R.drawable.ic_nav_settings),
+        GuideStep("Составьте рабочий цикл",
+            "Нажмите «Добавить график». Выберите типы по порядку: День → Ночь → Выходной. Можно добавить любое количество дней и менять их местами.",
+            1, "Создать график", R.drawable.ic_nav_calendar),
+        GuideStep("Выберите дату начала",
+            "После создания графика нажмите нужную ячейку в календаре. С неё начинается цикл; остальные даты приложение заполнит автоматически.",
+            0, "Показать календарь", R.drawable.ic_nav_home),
+        GuideStep("Временно измените день",
+            "Нажмите любую дату. «Быстро заменить тип» меняет только эту смену. Основной цикл не сдвигается, а замену можно отменить.",
+            0, "Открыть календарь", R.drawable.ic_nav_edit),
+        GuideStep("Напомнить за день",
+            "У выбранной рабочей даты есть кнопка «Напомнить накануне». Это обычное уведомление, отдельно от будильника. Другие смены не затрагиваются.",
+            0, "Показать напоминания", R.drawable.ic_nav_alarm),
+        GuideStep("Проверьте будильник",
+            "В разделе «Будильники» выберите мелодию, разрешения и протестируйте сигнал. График может работать и вовсе без будильников.",
+            2, "Открыть будильники", R.drawable.ic_nav_alarm)
+    )
+
+    private fun openGuideSection(index: Int) {
+        val step = guideSteps[index]
+        tab = step.tab
+        calendarExpanded = false
+        render()
+        when (index) {
+            0 -> showTypes()
+            1 -> editSchedule(null)
+            2 -> {
+                val schedule = store.active()
+                if (schedule?.anchor == null && schedule?.steps?.isNotEmpty() == true) {
+                    choosingStartFor = schedule.id
+                    render()
+                }
+            }
+            4 -> {
+                var date = LocalDate.now().plusDays(2)
+                repeat(45) {
+                    if (store.forDate(date)?.let { !it.type.rest && !it.paused } == true) {
+                        selectedDate = date
+                        shownMonth = YearMonth.from(date)
+                        render()
+                        return
+                    }
+                    date = date.plusDays(1)
+                }
+                toast("Сначала создайте график с рабочими днями")
+            }
+        }
+    }
+
+    private fun showGuide(index: Int = 0) {
+        val steps = guideSteps
+        if (index !in steps.indices) return
+        val info = steps[index]
+        val panel = editorPanel()
+        panel.addView(text("ПОДСКАЗКА " + (index + 1) + " ИЗ " + steps.size, 12f, primary, true))
+        space(panel, 14)
+        val iconCard = navIcon(info.iconId, primary).apply {
+            background = shape(0xFFE8EEFF.toInt(), 20)
+            setPadding(d(22), d(22), d(22), d(22))
+        }
+        panel.addView(iconCard, LinearLayout.LayoutParams(d(82), d(82)))
+        space(panel, 16)
+        panel.addView(text(info.title, 20f, ink, true))
+        space(panel, 9)
+        panel.addView(text(info.message, 15f, muted))
+        space(panel, 17)
+        panel.addView(action("↗ " + info.action, false) {
+            getSharedPreferences("walkthrough_v1", Context.MODE_PRIVATE).edit()
+                .putBoolean("seen", true).apply()
+            dialogDismiss?.invoke()
+            openGuideSection(index)
+        })
+        // This dialog is self-contained, so the guide can be reopened any time.
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Как пользоваться «Моим режимом»")
+            .setView(dialogScroll(panel))
+            .setPositiveButton(if (index == steps.lastIndex) "Готово" else "Далее", null)
+            .setNegativeButton(if (index == 0) "Пропустить" else "Назад", null).create()
+        dialogDismiss = { dlg.dismiss() }
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dlg.dismiss()
+                if (index == steps.lastIndex) {
+                    getSharedPreferences("walkthrough_v1", Context.MODE_PRIVATE).edit()
+                        .putBoolean("seen", true).apply()
+                } else showGuide(index + 1)
+            }
+            dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                dlg.dismiss()
+                if (index > 0) showGuide(index - 1)
+                else getSharedPreferences("walkthrough_v1", Context.MODE_PRIVATE).edit()
+                    .putBoolean("seen", true).apply()
+            }
+        }
+        showEditor(dlg)
+    }
+
+    private var dialogDismiss: (() -> Unit)? = null
+
     private fun offerFirstScheduleGuide() {
-        val prefs = getSharedPreferences("welcome_v1", Context.MODE_PRIVATE)
-        if (store.schedules.isNotEmpty() || prefs.getBoolean("seen", false)) return
-        prefs.edit().putBoolean("seen", true).apply()
-        AlertDialog.Builder(this)
-            .setTitle("Настроим ваш первый график")
-            .setMessage("Сначала можно создать типы дней с цветом, иконкой, рабочими часами и будильником. Затем составить из них последовательность смен.")
-            .setPositiveButton("Настроить типы дней") { _, _ -> showTypes() }
-            .setNegativeButton("Сразу добавить график") { _, _ -> editSchedule(null) }
-            .show()
+        val prefs = getSharedPreferences("walkthrough_v1", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("seen", false)) showGuide(0)
     }
 
     private fun offerNotificationSetupOnce(): Boolean {
@@ -1171,7 +1269,10 @@ class ModernHomeActivity : Activity() {
     }
 
     private fun renderSettings() {
-        wide(body, text("Настройки", 24f, ink, true), 15)
+        wide(body, text("Настройки", 24f, ink, true), 10)
+        wide(body, action("ⓘ Как пользоваться · Интерактивная помощь", false) {
+            showGuide(0)
+        }, 15)
         val box = card()
         box.addView(text("Типы дней", 18f, ink, true))
         space(box, 6)
