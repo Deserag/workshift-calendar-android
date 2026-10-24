@@ -1544,12 +1544,9 @@ class ModernHomeActivity : Activity() {
             ?: store.active()?.defaultAlarmTime ?: "07:00"
         val ringButton = selectTime("Время будильника", ringTime) { ringTime = it }
         panel.addView(ringButton)
-        val previous = CheckBox(this).apply {
-            text = "Звонить за день до смены"
-            isChecked = original.alarmPreviousDay
-            setTextColor(ink)
+        if (original.alarmPreviousDay) {
+            panel.addView(text("Старый режим звонка накануне: после сохранения будильник останется на день смены. Обычное напоминание можно добавить в календаре.", 12f, muted))
         }
-        panel.addView(previous)
 
         fun refresh() {
             val kind = types[typeSpinner.selectedItemPosition.coerceAtLeast(0)]
@@ -1567,7 +1564,6 @@ class ModernHomeActivity : Activity() {
             }
             alarmMode.isEnabled = !rest
             ringButton.visibility = if (!rest && alarmMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
-            previous.visibility = if (!rest && alarmMode.selectedItemPosition == 1) View.VISIBLE else View.GONE
             alarmSource.text = when {
                 rest -> "Выходной — сигнал не назначается"
                 alarmMode.selectedItemPosition == 1 -> "Свое время, независимо от типа дня"
@@ -1612,7 +1608,7 @@ class ModernHomeActivity : Activity() {
                     end = if (modeWork == "CUSTOM") until else null,
                     alarmMode = modeAlarm,
                     alarmTime = if (modeAlarm == "ON") ringTime else null,
-                    alarmPreviousDay = if (modeAlarm == "ON") previous.isChecked else false,
+                    alarmPreviousDay = false,
                     workMode = modeWork
                 ))
                 dlg.dismiss()
@@ -1668,24 +1664,34 @@ class ModernHomeActivity : Activity() {
         space(panel, 12)
         panel.addView(text("Цвет типа дня", 14f, ink, true))
         space(panel, 8)
-        var chosen = existing?.color ?: colors[0]
-        val colorGrid = GridLayout(this).apply { columnCount = 4 }
+        var chosen = existing?.color ?: darkColors[0]
+        val colorChoices = stack()
         fun redrawColors() {
-            colorGrid.removeAllViews()
-            colors.forEachIndexed { idx, color ->
-                val tile = text(if (chosen == color) "✓" else "", 18f, primary, true).apply {
-                    gravity = Gravity.CENTER
-                    background = shape(color, 12, if (chosen == color) primary else null)
-                    contentDescription = "Цвет " + (idx + 1)
+            colorChoices.removeAllViews()
+            listOf(
+                "Контрастные · рекомендуем" to darkColors,
+                "Светлые · дополнительные" to lightColors
+            ).forEach { (title, palette) ->
+                colorChoices.addView(text(title, 13f, muted, true))
+                space(colorChoices, 7)
+                val grid = GridLayout(this).apply { columnCount = 4 }
+                palette.forEachIndexed { idx, color ->
+                    val tile = text(if (chosen == color) "✓" else "", 20f, readableOn(color), true).apply {
+                        gravity = Gravity.CENTER
+                        background = shape(color, 13, if (chosen == color) primary else null)
+                        contentDescription = "$title, цвет " + (idx + 1)
+                    }
+                    tap(tile) { chosen = color; redrawColors() }
+                    grid.addView(tile, GridLayout.LayoutParams().apply {
+                        width = d(52); height = d(46); setMargins(d(3), d(4), d(3), d(4))
+                    })
                 }
-                tap(tile) { chosen = color; redrawColors() }
-                colorGrid.addView(tile, GridLayout.LayoutParams().apply {
-                    width = d(52); height = d(46); setMargins(d(3), d(3), d(3), d(3))
-                })
+                colorChoices.addView(grid)
+                space(colorChoices, 13)
             }
         }
         redrawColors()
-        panel.addView(colorGrid)
+        panel.addView(colorChoices)
         space(panel, 14)
         panel.addView(text("Иконка типа дня", 14f, ink, true))
         space(panel, 5)
@@ -1742,18 +1748,15 @@ class ModernHomeActivity : Activity() {
         var alarmTime = existing?.alarmTime ?: "07:00"
         val alarmButton = selectTime("Время будильника", alarmTime) { alarmTime = it }
         panel.addView(alarmButton)
-        val previous = CheckBox(this).apply {
-            text = "Звонить накануне смены"
-            isChecked = existing?.alarmPreviousDay ?: false
+        if (existing?.alarmPreviousDay == true) {
+            panel.addView(text("Ранее у этого типа был включён звонок накануне. После сохранения будильник будет звучать в день смены. Напоминание накануне теперь включается отдельно в календаре.", 12f, muted))
         }
-        panel.addView(previous)
         fun refresh() {
             hoursEnabled.isEnabled = !rest.isChecked
             startBtn.visibility = if (!rest.isChecked && hoursEnabled.isChecked) View.VISIBLE else View.GONE
             endBtn.visibility = if (!rest.isChecked && hoursEnabled.isChecked) View.VISIBLE else View.GONE
             alarmChoice.isEnabled = !rest.isChecked
             alarmButton.visibility = if (!rest.isChecked && alarmChoice.selectedItemPosition == 1) View.VISIBLE else View.GONE
-            previous.visibility = if (!rest.isChecked && alarmChoice.selectedItemPosition == 1) View.VISIBLE else View.GONE
         }
         rest.setOnCheckedChangeListener { _, _ -> refresh() }
         hoursEnabled.setOnCheckedChangeListener { _, _ -> refresh() }
@@ -1780,7 +1783,7 @@ class ModernHomeActivity : Activity() {
                     1 -> "ON"; 2 -> "OFF"; else -> "INHERIT"
                 }
                 item.alarmTime = if (item.alarmMode == "ON") alarmTime else null
-                item.alarmPreviousDay = item.alarmMode == "ON" && previous.isChecked
+                item.alarmPreviousDay = false
                 if (existing == null) store.types.add(item)
                 changed()
                 after()
