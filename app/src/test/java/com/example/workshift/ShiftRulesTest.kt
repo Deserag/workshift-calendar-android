@@ -117,4 +117,45 @@ class ShiftRulesTest {
         s.overrides.clear()
         assertEquals("work", ShiftRules.forDate(s, types, start.plusDays(3))?.type?.id)
     }
+
+    @Test fun reminderIsOnlyForSelectedWorkDateAndDoesNotMoveAlarm() {
+        val s = cycle()
+        val target = start.plusDays(3)
+        val original = ShiftRules.alarmForDate(s, types, target)!!
+        assertNull(ShiftRules.reminderForDate(s, types, target))
+        s.reminders[target.toString()] = "19:00"
+        assertEquals("19:00", ShiftRules.reminderForDate(s, types, target))
+        assertEquals(target.minusDays(1).atTime(19, 0),
+            ShiftRules.reminderMoment(target, "19:00"))
+        assertEquals(original, ShiftRules.alarmForDate(s, types, target))
+        assertNull(ShiftRules.reminderForDate(s, types, start))
+    }
+
+    @Test fun remindOnlyWhenWorkActiveAndNotPaused() {
+        val s = cycle()
+        s.reminders[start.toString()] = "18:00"
+        s.reminders[start.plusDays(2).toString()] = "18:00" // Rest day
+        assertEquals("18:00", ShiftRules.reminderForDate(s, types, start))
+        assertNull(ShiftRules.reminderForDate(s, types, start.plusDays(2)))
+        s.pauses.add(PausePeriod(start, start))
+        assertNull(ShiftRules.reminderForDate(s, types, start))
+        s.pauses.clear()
+        s.enabled = false
+        assertNull(ShiftRules.reminderForDate(s, types, start))
+        s.enabled = true
+        assertEquals("18:00", ShiftRules.reminderForDate(s, types, start))
+    }
+
+    @Test fun individualReplacementControlsPreviousDayReminder() {
+        val s = cycle()
+        val date = start.plusDays(3)
+        s.reminders[date.toString()] = "20:15"
+        assertEquals("20:15", ShiftRules.reminderForDate(s, types, date))
+        s.overrides[date.toString()] = ShiftDay("rest", alarmMode = "OFF")
+        assertNull(ShiftRules.reminderForDate(s, types, date))
+        s.overrides.remove(date.toString())
+        assertEquals("20:15", ShiftRules.reminderForDate(s, types, date))
+        s.reminders.remove(date.toString())
+        assertNull(ShiftRules.reminderForDate(s, types, date))
+    }
 }
