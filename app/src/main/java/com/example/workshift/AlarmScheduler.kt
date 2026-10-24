@@ -18,6 +18,7 @@ object AlarmScheduler {
     private const val SNOOZE_OFFSET = 200_000_000
     private const val TRACKING = "scheduled_request_codes"
     private const val SNOOZE_TRACKING = "snoozed_request_codes"
+    private const val REMINDER_TRACKING = "scheduled_reminder_codes"
 
     private fun manager(context: Context): AlarmManager =
         context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -38,6 +39,30 @@ object AlarmScheduler {
             context, requestId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    private fun pendingReminder(context: Context, id: Int, scheduleId: String? = null,
+                                date: String? = null): PendingIntent {
+        val intent = Intent(context, ShiftReminderReceiver::class.java).apply {
+            action = "com.example.workshift.DAY_BEFORE_REMINDER"
+            data = Uri.parse("workshift://reminder/$id")
+            putExtra("scheduleId", scheduleId)
+            putExtra("date", date)
+        }
+        return PendingIntent.getBroadcast(context, id, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun reminder(context: Context, id: Int, millis: Long, scheduleId: String,
+                         date: String): Boolean {
+        if (millis <= System.currentTimeMillis()) return false
+        return try {
+            // Inexact: an informational notification should not consume the exact-alarm
+            // permission intended for a real wake-up alarm.
+            manager(context).setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP, millis, pendingReminder(context, id, scheduleId, date))
+            true
+        } catch (_: SecurityException) { false }
     }
 
     private fun showAlarm(context: Context): PendingIntent = PendingIntent.getActivity(
@@ -105,8 +130,14 @@ object AlarmScheduler {
             manager(app).cancel(intent)
             intent.cancel()
         }
+        tracking.getString(REMINDER_TRACKING, "").orEmpty().split(',')
+            .mapNotNull { it.toIntOrNull() }.forEach { id ->
+                val intent = pendingReminder(app, id)
+                manager(app).cancel(intent)
+                intent.cancel()
+            }
         manager(app).cancel(refreshIntent(app))
-        tracking.edit().remove(TRACKING).commit()
+        tracking.edit().remove(TRACKING).remove(REMINDER_TRACKING).commit()
         if (cancelSnoozes) {
             tracking.getString(SNOOZE_TRACKING, "").orEmpty().split(',')
                 .mapNotNull { it.toIntOrNull() }.forEach { id ->
@@ -117,18 +148,18 @@ object AlarmScheduler {
             tracking.edit().remove(SNOOZE_TRACKING).apply()
         }
 
-        if (!permitted(app)) return 0
+        val canRing = permitted(app)
         val store = ShiftStore(app)
         val active = store.active() ?: return 0
         if (!active.enabled || active.anchor == null || active.steps.isEmpty()) return 0
         val first = YearMonth.now().atDay(1)
         val last = YearMonth.now().plusMonths(1).atEndOfMonth()
         val ids = mutableListOf<Int>()
+        val reminderIds = mutableListOf<Int>()
         var date = first
         while (!date.isAfter(last)) {
             val alarm = store.alarmForDate(date)
-            if (alarm != null) {
-                val atDate = if (alarm.previousDay) date.minusDays(1) else date
+            if (alarm != null && canRing) {
                 val whenLocal = ShiftRules.moment(date, alarm)
                 val millis = whenLocal.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val requestId = date.toEpochDay().toInt() + 1_000_000
@@ -136,17 +167,25 @@ object AlarmScheduler {
                     ids.add(requestId)
                 }
             }
+            ShiftRules.reminderForDate(active, store.types, date)?.let { time ->
+                val whenLocal = ShiftRules.reminderMoment(date, time)
+                val millis = whenLocal.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val requestId = date.toEpochDay().toInt() + 50_000_000
+                if (reminder(app, requestId, millis, active.id, date.toString())) reminderIds.add(requestId)
+            }
             date = date.plusDays(1)
         }
-        tracking.edit().putString(TRACKING, ids.joinToString(",")).commit()
+        tracking.edit().putString(TRACKING, ids.joinToString(","))
+            .putString(REMINDER_TRACKING, reminderIds.joinToString(",")).commit()
         // The two-month sliding window must continue advancing without opening the app.
         val nextMonth = YearMonth.now().plusMonths(1).atDay(1).atTime(0, 2)
         val trigger = nextMonth.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         try {
-            manager(app).setExactAndAllowWhileIdle(
+            // Inexact background refresh is sufficient; actual wake-up alarms remain exact.
+            manager(app).setAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP, trigger, refreshIntent(app)
             )
-        } catch (_: SecurityException) { /* UI shows permission is required */ }
+        } catch (_: SecurityException) { /* retry when the app opens */ }
         return ids.size
     }
 }
