@@ -623,7 +623,7 @@ class ModernHomeActivity : Activity() {
             }
         } else {
             val row = hrow()
-            row.addView(navIcon(iconFor(entry.type), primary).apply {
+            row.addView(navIcon(iconFor(entry.type), iconTintOn(entry.type.color)).apply {
                 background = shape(entry.type.color, 19)
                 setPadding(d(13), d(13), d(13), d(13))
             }, LinearLayout.LayoutParams(d(56), d(56)))
@@ -639,7 +639,18 @@ class ModernHomeActivity : Activity() {
             outer.addView(row)
             space(outer, 8)
             outer.addView(text("Будильник: " + store.alarmSource(date), 12f, muted))
-            space(outer, 13)
+            space(outer, 12)
+            if (!entry.type.rest) {
+                val time = store.active()?.reminders?.get(date.toString())
+                outer.addView(action(
+                    if (time == null) "🔔 Напомнить накануне (только этот день)"
+                    else "🔔 Напоминание накануне в $time · Изменить",
+                    false
+                ) { editReminderForDate(date) })
+                space(outer, 5)
+                outer.addView(text("Это обычное уведомление за день до смены. Будильник на саму смену не изменится.", 12f, muted))
+                space(outer, 12)
+            }
             outer.addView(action("Быстро заменить тип дня", false) { quickReplaceDay(date) })
             space(outer, 6)
             outer.addView(action("Изменить часы и будильник", false) { editOverride(date) })
@@ -668,6 +679,53 @@ class ModernHomeActivity : Activity() {
         wide(body, outer)
     }
 
+    private fun editReminderForDate(date: LocalDate) {
+        val schedule = store.active() ?: return
+        val entry = store.forDate(date) ?: return
+        if (entry.type.rest || entry.paused) {
+            toast("Для выходного или паузы напоминание не планируется")
+            return
+        }
+        val panel = editorPanel()
+        panel.addView(text("Напоминание только для " + date.toString(), 16f, ink, true))
+        space(panel, 7)
+        panel.addView(text("Вечером накануне придёт обычное уведомление. Звук будильника и остальные смены останутся как были.", 13f, muted))
+        space(panel, 11)
+        val existing = schedule.reminders[date.toString()]
+        val checked = CheckBox(this).apply {
+            text = "Напомнить за день до этой смены"
+            isChecked = existing != null
+            setTextColor(ink)
+        }
+        panel.addView(checked)
+        var moment = existing ?: "19:00"
+        val choose = selectTime("Время напоминания", moment) { moment = it }
+        panel.addView(choose)
+        choose.visibility = if (checked.isChecked) View.VISIBLE else View.GONE
+        checked.setOnCheckedChangeListener { _, value ->
+            choose.visibility = if (value) View.VISIBLE else View.GONE
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Напомнить накануне")
+            .setView(dialogScroll(panel))
+            .setPositiveButton("Сохранить", null)
+            .setNegativeButton("Отмена", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val at = ShiftRules.reminderMoment(date, moment)
+                if (checked.isChecked && !at.isAfter(java.time.LocalDateTime.now())) {
+                    toast("Это время уже прошло. Выберите будущую дату смены.")
+                    return@setOnClickListener
+                }
+                if (checked.isChecked) schedule.reminders[date.toString()] = moment
+                else schedule.reminders.remove(date.toString())
+                dialog.dismiss()
+                changed()
+            }
+        }
+        showEditor(dialog)
+    }
+
     private fun quickReplaceDay(date: LocalDate) {
         val schedule = store.active() ?: return
         if (store.forDate(date) == null) return
@@ -682,10 +740,11 @@ class ModernHomeActivity : Activity() {
                 setPadding(d(12), d(11), d(12), d(11))
                 background = shape(type.color, 15)
             }
-            row.addView(navIcon(iconFor(type), primary),
+            val typeInk = readableOn(type.color)
+            row.addView(navIcon(iconFor(type), iconTintOn(type.color)),
                 LinearLayout.LayoutParams(d(30), d(30)).apply { marginEnd = d(11) })
-            row.addView(text(type.name, 16f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(text("›", 24f, muted))
+            row.addView(text(type.name, 16f, typeInk, true), LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(text("›", 24f, typeInk))
             tap(row) {
                 schedule.overrides[date.toString()] = ShiftDay(typeId = type.id)
                 changed()
