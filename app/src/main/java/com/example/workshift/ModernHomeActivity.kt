@@ -1280,7 +1280,7 @@ class ModernHomeActivity : Activity() {
         space(box, 14)
         store.types.forEach { type ->
             val row = hrow()
-            val color = navIcon(iconFor(type), primary).apply {
+            val color = navIcon(iconFor(type), iconTintOn(type.color)).apply {
                 background = shape(type.color, 9)
                 setPadding(d(4), d(4), d(4), d(4))
             }
@@ -1505,10 +1505,10 @@ class ModernHomeActivity : Activity() {
                     background = shape(type?.color ?: 0xFFE8EEFF.toInt(), 16)
                 }
                 val top = hrow()
-                top.addView(navIcon(iconFor(type), primary),
+                top.addView(navIcon(iconFor(type), iconTintOn(type?.color ?: 0xFFE8EEFF.toInt())),
                     LinearLayout.LayoutParams(d(25), d(25)).apply { marginEnd = d(8) })
                 top.addView(text((i + 1).toString() + ".  " + (type?.name ?: "День"),
-                    15f, ink, true))
+                    15f, readableOn(type?.color ?: 0xFFE8EEFF.toInt()), true))
                 cell.addView(top)
                 val effective = if (item.workMode == "INHERIT")
                     listOf(type?.defaultStart, type?.defaultEnd)
@@ -1516,7 +1516,7 @@ class ModernHomeActivity : Activity() {
                 else listOf(null, null)
                 val effectiveTime = if (effective[0] != null && effective[1] != null)
                     effective[0] + "–" + effective[1] else "без времени"
-                cell.addView(text(effectiveTime, 12f, muted))
+                cell.addView(text(effectiveTime, 12f, readableOn(type?.color ?: 0xFFE8EEFF.toInt())))
                 val tools = hrow()
                 tools.addView(link("↑") { if (i > 0) { val it = days.removeAt(i); days.add(i - 1, it); redraw() } })
                 tools.addView(link("↓") { if (i < days.lastIndex) { val it = days.removeAt(i); days.add(i + 1, it); redraw() } })
@@ -1726,7 +1726,7 @@ class ModernHomeActivity : Activity() {
             rows.removeAllViews()
             store.types.toList().forEach { type ->
                 val r = hrow()
-                r.addView(navIcon(iconFor(type), primary).apply {
+                r.addView(navIcon(iconFor(type), iconTintOn(type.color)).apply {
                     background = shape(type.color, 10)
                     setPadding(d(5), d(5), d(5), d(5))
                 }, LinearLayout.LayoutParams(d(32), d(32)))
