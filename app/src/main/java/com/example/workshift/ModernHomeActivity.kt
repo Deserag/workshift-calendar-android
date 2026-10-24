@@ -189,6 +189,12 @@ class ModernHomeActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(surface) }
         setContentView(root)
+        intent?.getStringExtra("focusDate")?.let { raw ->
+            runCatching { LocalDate.parse(raw) }.onSuccess {
+                selectedDate = it
+                shownMonth = YearMonth.from(it)
+            }
+        }
         render()
         window.decorView.post {
             if (!offerNotificationSetupOnce()) offerFirstScheduleGuide()
@@ -1325,7 +1331,7 @@ class ModernHomeActivity : Activity() {
         space(second, 16)
         second.addView(text("О приложении", 17f, ink, true))
         space(second, 7)
-        second.addView(text("Мой график 0.5 · данные сохраняются на устройстве, без регистрации и интернета.", 13f, muted))
+        second.addView(text("Мой режим 0.6 · данные хранятся на устройстве, без регистрации и интернета.", 13f, muted))
         wide(body, second)
     }
 
