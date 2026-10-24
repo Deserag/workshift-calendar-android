@@ -70,6 +70,24 @@ object ShiftRules {
         }
     }
 
+    /**
+     * An optional, *silent* day-before reminder; does not move or replace
+     * the shift alarm. It is only valid for an explicitly selected work date.
+     */
+    fun reminderForDate(
+        schedule: WorkSchedule?,
+        types: List<DayType>,
+        date: LocalDate
+    ): String? {
+        val entry = forDate(schedule, types, date) ?: return null
+        if (entry.paused || entry.type.rest) return null
+        return schedule?.reminders?.get(date.toString())
+            ?.takeIf { runCatching { LocalTime.parse(it) }.isSuccess }
+    }
+
+    fun reminderMoment(date: LocalDate, time: String): LocalDateTime =
+        LocalDateTime.of(date.minusDays(1), LocalTime.parse(time))
+
     fun moment(date: LocalDate, alarm: AlarmEntry): LocalDateTime =
         LocalDateTime.of(if (alarm.previousDay) date.minusDays(1) else date, LocalTime.parse(alarm.time))
 }
