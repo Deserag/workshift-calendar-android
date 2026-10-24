@@ -67,11 +67,18 @@ class ModernHomeActivity : Activity() {
     private val surface = Color.rgb(246, 248, 253)
     private val border = Color.rgb(231, 235, 246)
     private val good = Color.rgb(14, 140, 92)
-    private val colors = intArrayOf(
-        0xFFFCE7AE.toInt(), 0xFFE7DBFF.toInt(), 0xFFFADDE2.toInt(),
-        0xFFD5EBFF.toInt(), 0xFFD9F7E8.toInt(), 0xFFFFDEC5.toInt(),
-        0xFFE1E8F2.toInt(), 0xFFF3DDF6.toInt(), 0xFFC6F2F4.toInt(),
-        0xFFEEE6D8.toInt(), 0xFFC9DFB6.toInt(), 0xFFDBE4FF.toInt()
+    // Show saturated, readable colours first. Existing user-selected colours are preserved.
+    private val darkColors = intArrayOf(
+        0xFF146B8B.toInt(), 0xFF166C64.toInt(), 0xFF2647A1.toInt(), 0xFF5D3394.toInt(),
+        0xFF8B2E57.toInt(), 0xFFA44426.toInt(), 0xFF784719.toInt(), 0xFF46516F.toInt(),
+        0xFF126B3F.toInt(), 0xFF8A3838.toInt(), 0xFF5356AB.toInt(), 0xFF6F3979.toInt(),
+        0xFF006D78.toInt(), 0xFF8F4C17.toInt(), 0xFF32445B.toInt(), 0xFF557323.toInt()
+    )
+    private val lightColors = intArrayOf(
+        0xFFF6DE9A.toInt(), 0xFFE2D1FC.toInt(), 0xFFF7C9D9.toInt(), 0xFFC8E5FC.toInt(),
+        0xFFBCE9D7.toInt(), 0xFFF8CDAF.toInt(), 0xFFCFD8E8.toInt(), 0xFFE6C7EB.toInt(),
+        0xFFB4E7EB.toInt(), 0xFFE8DBC7.toInt(), 0xFFD0DFAF.toInt(), 0xFFCFDDFC.toInt(),
+        0xFFDAACC0.toInt(), 0xFFA2D2C8.toInt(), 0xFFD7D3F5.toInt(), 0xFFEDCCB0.toInt()
     )
     private val iconOptions: List<Pair<String, Int>> = listOf(
         "sun" to R.drawable.ic_type_sun,
@@ -104,6 +111,12 @@ class ModernHomeActivity : Activity() {
             cornerRadius = d(radius).toFloat()
             if (line != null) setStroke(d(1), line)
         }
+    private fun readableOn(background: Int): Int =
+        if (Color.luminance(background) < 0.31) Color.WHITE else ink
+
+    private fun iconTintOn(background: Int): Int =
+        if (Color.luminance(background) < 0.31) Color.WHITE else primary
+
     private fun gradient(): GradientDrawable = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         intArrayOf(0xFF4478FC.toInt(), 0xFF304AE0.toInt())
@@ -282,12 +295,15 @@ class ModernHomeActivity : Activity() {
         }
         row.addView(icon, LinearLayout.LayoutParams(d(54), d(54)))
         val labels = stack().apply { setPadding(d(12), 0, 0, 0) }
-        labels.addView(text("Мой график", 26f, ink, true))
+        labels.addView(text("Мой режим", 26f, ink, true))
         labels.addView(text("Ваши смены — под контролем", 12f, muted))
         row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-        val menu = text("⋯", 27f, muted, true).apply { gravity = Gravity.CENTER }
-        tap(menu) { tab = 3; render() }
-        row.addView(menu, LinearLayout.LayoutParams(d(36), d(46)))
+        val menu = text("ⓘ", 25f, primary, true).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "Помощь: как пользоваться"
+        }
+        tap(menu) { showGuide(0) }
+        row.addView(menu, LinearLayout.LayoutParams(d(42), d(48)))
         wide(body, row, 19)
     }
 
@@ -441,20 +457,20 @@ class ModernHomeActivity : Activity() {
                 background = shape(color, 13, if (date == LocalDate.now() && !selected) primary else null)
                 contentDescription = date.toString() + " " + (entry?.type?.name ?: "без смены")
             }
-            cell.addView(text(number.toString(), 13f, if (selected) Color.WHITE else ink, selected).apply {
+            cell.addView(text(number.toString(), 13f, readableOn(color), selected).apply {
                 gravity = Gravity.CENTER
             })
             if (entry != null) {
                 val icon = navIcon(
                     if (entry.paused) R.drawable.ic_nav_pause else iconFor(entry.type),
-                    if (selected) Color.WHITE else primary
+                    iconTintOn(color)
                 )
                 cell.addView(icon, LinearLayout.LayoutParams(d(16), d(16)).apply {
                     topMargin = d(2)
                 })
             }
             if (store.alarmForDate(date) != null) {
-                cell.addView(text("•", 11f, if (selected) Color.WHITE else primary, true).apply {
+                cell.addView(text("•", 11f, readableOn(color), true).apply {
                     gravity = Gravity.CENTER
                 })
             }
@@ -525,29 +541,32 @@ class ModernHomeActivity : Activity() {
                 background = shape(if (selected) 0xFFE8EEFF.toInt() else
                     (entry?.type?.color ?: 0xFFF5F7FB.toInt()), 16)
             }
+            val tileColor = if (selected) 0xFFE8EEFF.toInt() else
+                (entry?.type?.color ?: 0xFFF5F7FB.toInt())
+            val tileInk = readableOn(tileColor)
             val day = stack().apply { gravity = Gravity.CENTER }
-            day.addView(text(date.dayOfMonth.toString(), 21f, ink, true).apply {
+            day.addView(text(date.dayOfMonth.toString(), 21f, tileInk, true).apply {
                 gravity = Gravity.CENTER
             })
             day.addView(text(date.dayOfWeek.getDisplayName(
-                java.time.format.TextStyle.SHORT, Locale("ru", "RU")), 12f, muted).apply {
+                java.time.format.TextStyle.SHORT, Locale("ru", "RU")), 12f, tileInk).apply {
                 gravity = Gravity.CENTER
             })
             tile.addView(day, LinearLayout.LayoutParams(d(52), -2))
             if (entry != null) {
-                tile.addView(navIcon(iconFor(entry.type), primary),
+                tile.addView(navIcon(iconFor(entry.type), iconTintOn(tileColor)),
                     LinearLayout.LayoutParams(d(26), d(26)).apply { marginEnd = d(10) })
             }
             val labels = stack()
-            labels.addView(text(entry?.type?.name ?: "Нет смены", 15f, ink, true))
+            labels.addView(text(entry?.type?.name ?: "Нет смены", 15f, tileInk, true))
             val hours = entry?.day?.let { dayEntry ->
                 if (dayEntry.start != null && dayEntry.end != null) dayEntry.start + " – " + dayEntry.end
                 else "Без времени"
             } ?: "Свободный день"
-            labels.addView(text(hours, 12f, muted))
+            labels.addView(text(hours, 12f, tileInk))
             tile.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
             val alarm = store.alarmForDate(date)
-            if (alarm != null) tile.addView(text("◷ " + alarm.time, 12f, primary, true))
+            if (alarm != null) tile.addView(text("◷ " + alarm.time, 12f, tileInk, true))
             tap(tile) { selectedDate = date; shownMonth = YearMonth.from(date); render() }
             wide(box, tile, 7)
         }
