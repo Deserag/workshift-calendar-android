@@ -12,7 +12,10 @@ import java.time.LocalDate
 class StoreScreenshotActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!BuildConfig.DEBUG) { finish(); return }
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) {
+            finish()
+            return
+        }
 
         val now = LocalDate.now()
         val store = ShiftStore(this)
