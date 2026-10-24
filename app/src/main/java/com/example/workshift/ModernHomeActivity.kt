@@ -195,9 +195,27 @@ class ModernHomeActivity : Activity() {
                 shownMonth = YearMonth.from(it)
             }
         }
+        // Debug-only screenshot navigation. Production ignores all capture extras.
+        val screenshotMode = if (applicationInfo.flags and
+            android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            intent?.getStringExtra("storeScreenshotScreen") else null
+        when (screenshotMode) {
+            "home" -> tab = 0
+            "month" -> { tab = 0; calendarExpanded = true; weeklyView = false }
+            "week" -> { tab = 0; calendarExpanded = true; weeklyView = true }
+            "schedules" -> tab = 1
+            "alarms" -> tab = 2
+            "settings", "types", "editType" -> tab = 3
+            "editDay" -> tab = 0
+        }
         render()
         window.decorView.post {
-            if (!offerNotificationSetupOnce()) offerFirstScheduleGuide()
+            when (screenshotMode) {
+                "types" -> showTypes()
+                "editType" -> store.types.firstOrNull()?.let { editType(it) {} }
+                "editDay" -> store.forDate(selectedDate)?.let { editDay(it.day.copy()) {} }
+                null -> if (!offerNotificationSetupOnce()) offerFirstScheduleGuide()
+            }
         }
     }
 
