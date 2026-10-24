@@ -91,6 +91,8 @@ data class WorkSchedule(
     var defaultAlarmTime: String = "07:00",
     var defaultAlarmPreviousDay: Boolean = false,
     val overrides: MutableMap<String, ShiftDay> = mutableMapOf(),
+    // One-off, non-ringing notifications only for dates explicitly selected by the user.
+    val reminders: MutableMap<String, String> = mutableMapOf(),
     val pauses: MutableList<PausePeriod> = mutableListOf()
 ) {
     fun paused(date: LocalDate) = pauses.any { it.contains(date) }
@@ -100,6 +102,7 @@ data class WorkSchedule(
         put("defaultAlarmEnabled", defaultAlarmEnabled); put("defaultAlarmTime", defaultAlarmTime)
         put("defaultAlarmPreviousDay", defaultAlarmPreviousDay)
         put("overrides", JSONObject().apply { overrides.forEach { (d, v) -> put(d, v.toJson()) } })
+        put("reminders", JSONObject().apply { reminders.forEach { (d, v) -> put(d, v) } })
         put("pauses", JSONArray().apply { pauses.forEach { put(it.toJson()) } })
     }
     companion object {
@@ -107,6 +110,15 @@ data class WorkSchedule(
             val steps = o.optJSONArray("steps") ?: JSONArray()
             val overridesJson = o.optJSONObject("overrides") ?: JSONObject()
             val pausesJson = o.optJSONArray("pauses") ?: JSONArray()
+            val remindersJson = o.optJSONObject("reminders") ?: JSONObject()
+            val reminders = mutableMapOf<String, String>()
+            remindersJson.keys().forEach { key ->
+                val valid = runCatching {
+                    LocalDate.parse(key)
+                    java.time.LocalTime.parse(remindersJson.getString(key))
+                }.isSuccess
+                if (valid) reminders[key] = remindersJson.getString(key)
+            }
             val overrides = mutableMapOf<String, ShiftDay>()
             overridesJson.keys().forEach { key -> overrides[key] = ShiftDay.fromJson(overridesJson.getJSONObject(key)) }
             return WorkSchedule(
@@ -118,6 +130,7 @@ data class WorkSchedule(
                 defaultAlarmTime = o.optString("defaultAlarmTime", "07:00"),
                 defaultAlarmPreviousDay = o.optBoolean("defaultAlarmPreviousDay"),
                 overrides = overrides,
+                reminders = reminders,
                 pauses = (0 until pausesJson.length()).map { PausePeriod.fromJson(pausesJson.getJSONObject(it)) }.toMutableList()
             )
         }
@@ -137,8 +150,8 @@ class ShiftStore(context: Context) {
     init {
         val raw = prefs.getString("state", null)
         if (raw == null) {
-            types.add(DayType(id = "work", name = "Рабочий", color = 0xFFE1F6EB.toInt()))
-            types.add(DayType(id = "rest", name = "Выходной", color = 0xFFEBEFF5.toInt(), rest = true))
+            types.add(DayType(id = "work", name = "Рабочий", color = 0xFF167C75.toInt()))
+            types.add(DayType(id = "rest", name = "Выходной", color = 0xFF475569.toInt(), rest = true, icon = "rest"))
             if (legacy.contains("cycle")) migrateLegacy()
             save()
         } else {
@@ -203,6 +216,7 @@ class ShiftStore(context: Context) {
         require(ids.size == newTypes.size && ids.all { it.isNotBlank() }) { "Duplicate type ids" }
         require(newSchedules.map { it.id }.distinct().size == newSchedules.size) { "Duplicate schedules" }
         newSchedules.forEach { schedule ->
+            require(schedule.reminders.keys.all { runCatching { LocalDate.parse(it) }.isSuccess }) { "Invalid reminder date" }
             require(schedule.steps.all { it.typeId in ids }) { "Unknown type in schedule" }
             require(schedule.overrides.values.all { it.typeId in ids }) { "Unknown type in calendar" }
         }
