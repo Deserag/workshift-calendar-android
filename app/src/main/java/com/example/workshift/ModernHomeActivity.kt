@@ -290,8 +290,8 @@ class ModernHomeActivity : Activity() {
         val row = hrow()
         val icon = ImageView(this).apply {
             setImageResource(R.drawable.ic_launcher_foreground)
-            background = shape(0xFFE5ECFF.toInt(), 19)
-            setPadding(d(4), d(4), d(4), d(4))
+            background = shape(0xFFDAEDE6.toInt(), 19)
+            setPadding(d(1), d(1), d(1), d(1))
         }
         row.addView(icon, LinearLayout.LayoutParams(d(54), d(54)))
         val labels = stack().apply { setPadding(d(12), 0, 0, 0) }
@@ -1253,7 +1253,7 @@ class ModernHomeActivity : Activity() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
-            putExtra(Intent.EXTRA_TITLE, "moi-grafik-backup.json")
+            putExtra(Intent.EXTRA_TITLE, "moi-rezhim-backup.json")
         }
         @Suppress("DEPRECATION")
         startActivityForResult(intent, 83)
@@ -1456,14 +1456,11 @@ class ModernHomeActivity : Activity() {
         var alarmTime = existing?.defaultAlarmTime ?: "07:00"
         val clock = selectTime("Время будильника", alarmTime) { alarmTime = it }
         panel.addView(clock)
-        val previous = CheckBox(this).apply {
-            text = "Будильник накануне смены"
-            isChecked = existing?.defaultAlarmPreviousDay ?: false
+        if (existing?.defaultAlarmPreviousDay == true) {
+            panel.addView(text("Старый режим звонка накануне. После сохранения обычный будильник будет звучать в день смены, а напоминания можно включить для отдельных дат в календаре.", 12f, muted))
         }
-        panel.addView(previous)
         val update = {
             clock.visibility = if (default.isChecked) View.VISIBLE else View.GONE
-            previous.visibility = if (default.isChecked) View.VISIBLE else View.GONE
         }
         default.setOnCheckedChangeListener { _, _ -> update() }; update()
         val dlg = AlertDialog.Builder(this)
@@ -1480,7 +1477,7 @@ class ModernHomeActivity : Activity() {
                 schedule.enabled = enabled.isChecked
                 schedule.defaultAlarmEnabled = default.isChecked
                 schedule.defaultAlarmTime = alarmTime
-                schedule.defaultAlarmPreviousDay = previous.isChecked
+                schedule.defaultAlarmPreviousDay = false
                 dlg.dismiss()
                 if (existing == null) editCycle(schedule, true)
                 else changed()
