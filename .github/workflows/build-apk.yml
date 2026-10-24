@@ -59,7 +59,7 @@ jobs:
             echo "::error::Unexpected network permission found in APK"
             exit 1
           fi
-          OUTPUT="app/build/outputs/apk/debug/workshift-calendar-v0.5.0-debug.apk"
+          OUTPUT="app/build/outputs/apk/debug/workshift-calendar-v0.6.0-debug.apk"
           cp "$APK" "$OUTPUT"
           echo "### Проверенный файл APK" >> "$GITHUB_STEP_SUMMARY"
           echo "APK собран, его подпись проверена; эти проверки **не заменяют антивирусное сканирование**." >> "$GITHUB_STEP_SUMMARY"
@@ -73,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           archive: false
-          path: app/build/outputs/apk/debug/workshift-calendar-v0.5.0-debug.apk
+          path: app/build/outputs/apk/debug/workshift-calendar-v0.6.0-debug.apk
           if-no-files-found: error
