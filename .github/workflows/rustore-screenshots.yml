@@ -1,0 +1,66 @@
+name: RuStore screenshots (demo emulator)
+
+on:
+  workflow_dispatch:
+  # One-time generation after adding this workflow; the run can also be
+  # repeated manually from the Actions tab at any time.
+  push:
+    paths:
+      - '.github/workflows/rustore-screenshots.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build debug app (release never contains demo fixture)
+        run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
+      - name: Capture store screenshots with synthetic schedules
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -euo pipefail
+            mkdir -p rustore-screenshots
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell wm size 1080x2400
+            adb shell wm density 420
+            adb shell settings put system time_12_24 24 || true
+            adb shell settings put global window_animation_scale 0 || true
+            adb shell settings put global transition_animation_scale 0 || true
+            adb shell settings put global animator_duration_scale 0 || true
+            adb shell pm grant com.example.workshift android.permission.POST_NOTIFICATIONS || true
+            for screen in home month week schedules alarms settings types editDay; do
+              adb shell am force-stop com.example.workshift || true
+              adb shell am start -W -n com.example.workshift/.StoreScreenshotActivity --es screen "$screen"
+              sleep 3
+              adb exec-out screencap -p > "rustore-screenshots/${screen}.png"
+              test "$(stat -c%s "rustore-screenshots/${screen}.png")" -gt 10000
+              file "rustore-screenshots/${screen}.png"
+            done
+            adb logcat -d -v brief | grep -E 'FATAL EXCEPTION|AndroidRuntime|Process: com.example.workshift' > rustore-screenshots/crash-scan.txt || true
+            if [ -s rustore-screenshots/crash-scan.txt ]; then
+              echo "::error::Android crash reported while capturing screenshots"
+              cat rustore-screenshots/crash-scan.txt
+              exit 1
+            fi
+      - name: Upload actual app screenshots for RuStore
+        uses: actions/upload-artifact@v4
+        with:
+          name: moi-rezhim-rustore-screenshots
+          path: rustore-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
