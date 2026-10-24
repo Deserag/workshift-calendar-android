@@ -21,6 +21,7 @@
             </intent-filter>
         </activity>
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <receiver android:name=".ShiftReminderReceiver" android:exported="false" />
         <receiver android:name=".AlarmActionReceiver" android:exported="false" />
         <receiver android:name=".RefreshReceiver" android:exported="false">
             <intent-filter>
